@@ -1,5 +1,6 @@
 import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MotionGlobalConfig } from 'framer-motion';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { db, DEMO_USER_ID } from '../mocks/db';
 import { loginAsDemo, renderApp } from '../test/render';
@@ -49,6 +50,24 @@ describe('DiscoverPage', () => {
     expect(await topName()).not.toBe(first);
     await vi.waitFor(() => expect(demo().swipes).toHaveLength(1));
     expect(demo().swipes[0]).toMatchObject({ targetKind: 'user', direction: 'PASS' });
+  });
+
+  it('hides the card that is flying out from assistive tech while the next one takes over', async () => {
+    MotionGlobalConfig.skipAnimations = false;
+    try {
+      const user = userEvent.setup();
+      renderApp('/discover');
+      const first = await topName();
+
+      await user.click(screen.getByRole('button', { name: 'Like' }));
+
+      // during the exit animation both cards are in the DOM, but only the new one is exposed
+      expect(screen.getAllByRole('article')).toHaveLength(1);
+      expect(await topName()).not.toBe(first);
+      expect(screen.getByRole('article', { name: first!, hidden: true }).closest('[aria-hidden="true"]')).not.toBeNull();
+    } finally {
+      MotionGlobalConfig.skipAnimations = true;
+    }
   });
 
   it('supports ← and → keys', async () => {

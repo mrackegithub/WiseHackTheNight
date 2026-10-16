@@ -15,6 +15,7 @@ Agent A appends a row in the **same commit** that changes a package.json, env va
 | @types/leaflet | ^1.9.22 | dev | Leaflet types | fe/A3-onboarding-location |
 | luxon | ^3.7.2 | prod | Europe/Budapest week/time math in the calendar (ARCHITECTURE §5: UTC on the wire, Budapest in the UI); DST-safe | fe/A4-calendar-week-view |
 | @types/luxon | ^3.7.6 | dev | luxon types | fe/A4-calendar-week-view |
+| framer-motion | ^14.3.0 | prod | drag-to-swipe gestures and card animations on /discover (ARCHITECTURE §2); respects reduced motion; tests set `MotionGlobalConfig.skipAnimations` | fe/A5-swipe-gestures |
 | vite | ^8.3.4 | dev | dev server (port 5173) and bundler | chore/phase-0 |
 | @vitejs/plugin-react | ^6.1.2 | dev | React JSX / fast refresh for Vite | chore/phase-0 |
 | tailwindcss | ^4.3.3 | dev | utility CSS (v4: `@import 'tailwindcss'` in `src/index.css`, no tailwind.config) | chore/phase-0 |
