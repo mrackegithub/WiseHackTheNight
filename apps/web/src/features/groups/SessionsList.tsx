@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import type { Schemas } from '@sgm/contracts';
 import { api } from '../../api/client';
 import { unwrap } from '../../api/errors';
+import { QueryError } from '../../components/QueryError';
 import { Spinner } from '../../components/Spinner';
 import { formatSlot } from '../../lib/time';
 import { useGroupSessions } from './queries';
@@ -68,7 +69,9 @@ export function SessionsList({ groupId }: { groupId: string }) {
       </h2>
       {sessions.isPending ? (
         <Spinner label="Loading sessions" />
-      ) : sessions.data?.length ? (
+      ) : sessions.isError ? (
+        <QueryError compact what="sessions" error={sessions.error} onRetry={() => void sessions.refetch()} />
+      ) : sessions.data.length ? (
         <ul className="mt-3 flex flex-col gap-2">
           {[...upcoming, ...past].map((s) => {
             const isPast = Date.parse(s.end) < now;

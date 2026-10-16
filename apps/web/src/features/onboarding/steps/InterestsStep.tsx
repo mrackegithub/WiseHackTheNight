@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { Schemas } from '@sgm/contracts';
 import { api } from '../../../api/client';
 import { unwrap } from '../../../api/errors';
+import { QueryError } from '../../../components/QueryError';
 import { Spinner } from '../../../components/Spinner';
 import { messageForError } from '../../../lib/error-messages';
 import { meQueryKey, useAuth } from '../../auth/auth-context';
@@ -45,6 +46,8 @@ export function InterestsStep({ onNext, onBack }: StepProps) {
     >
       {catalogue.isPending ? (
         <Spinner label="Loading interests" />
+      ) : catalogue.isError ? (
+        <QueryError compact what="the interests" error={catalogue.error} onRetry={() => void catalogue.refetch()} />
       ) : (
         <div className="flex flex-wrap gap-2" role="group" aria-label="Interests">
           {catalogue.data?.map((interest) => {

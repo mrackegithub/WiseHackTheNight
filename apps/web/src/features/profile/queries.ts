@@ -10,15 +10,15 @@ export const profileKeys = {
 };
 
 export function useInterests() {
-  return useQuery({ queryKey: profileKeys.interests, queryFn: () => unwrap(api.GET('/interests')), staleTime: Infinity });
+  return useQuery({ queryKey: profileKeys.interests, queryFn: () => unwrap(api.GET('/interests')), staleTime: Infinity, meta: { silent: true } });
 }
 
 export function useMyPreferences() {
-  return useQuery({ queryKey: profileKeys.preferences, queryFn: () => unwrap(api.GET('/me/preferences')) });
+  return useQuery({ queryKey: profileKeys.preferences, queryFn: () => unwrap(api.GET('/me/preferences')), meta: { silent: true } });
 }
 
 export function useMySubjects() {
-  return useQuery({ queryKey: profileKeys.subjects, queryFn: () => unwrap(api.GET('/me/subjects')) });
+  return useQuery({ queryKey: profileKeys.subjects, queryFn: () => unwrap(api.GET('/me/subjects')), meta: { silent: true } });
 }
 
 export function useSubjectSearch(q: string, limit = 8) {

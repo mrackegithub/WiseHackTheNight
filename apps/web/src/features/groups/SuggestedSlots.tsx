@@ -1,4 +1,5 @@
 import type { Schemas } from '@sgm/contracts';
+import { QueryError } from '../../components/QueryError';
 import { Spinner } from '../../components/Spinner';
 import { formatMinutes } from '../../lib/labels';
 import { formatSlot, minutesBetween } from '../../lib/time';
@@ -22,7 +23,9 @@ export function SuggestedSlots({ group, action }: SuggestedSlotsProps) {
       <p className="text-sm text-slate-600">When most of you are free in the next 7 days, best first.</p>
       {slots.isPending ? (
         <Spinner label="Finding common free time" />
-      ) : slots.data?.length ? (
+      ) : slots.isError ? (
+        <QueryError compact what="suggested times" error={slots.error} onRetry={() => void slots.refetch()} />
+      ) : slots.data.length ? (
         <ul className="mt-3 flex flex-col gap-2">
           {slots.data.slice(0, 5).map((s) => {
             const everyone = s.availableMemberIds.length === group.members.length;

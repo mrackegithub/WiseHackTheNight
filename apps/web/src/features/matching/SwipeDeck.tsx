@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { AnimatePresence, MotionConfig } from 'framer-motion';
 import type { Schemas } from '@sgm/contracts';
 import { Button } from '../../components/form/Button';
+import { QueryError } from '../../components/QueryError';
 import { Spinner } from '../../components/Spinner';
 import { CandidateCard } from './CandidateCard';
 import { useCandidates, useSwipe, type CandidateKind } from './queries';
@@ -56,6 +57,7 @@ export function SwipeDeck({ subjectId, kind, onMatch }: SwipeDeckProps) {
   }, [decide]);
 
   if (candidates.isPending) return <Spinner label="Finding study partners" />;
+  if (candidates.isError && !top) return <QueryError what="study partners" error={candidates.error} onRetry={() => void candidates.refetch()} />;
 
   if (!top) {
     return (

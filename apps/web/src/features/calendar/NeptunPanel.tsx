@@ -6,6 +6,7 @@ import { api } from '../../api/client';
 import { ApiError, unwrap } from '../../api/errors';
 import { Button } from '../../components/form/Button';
 import { FormError } from '../../components/form/FormError';
+import { QueryError } from '../../components/QueryError';
 import { TextField } from '../../components/form/TextField';
 import { messageForError } from '../../lib/error-messages';
 import { fieldErrors } from '../../lib/field-errors';
@@ -39,7 +40,7 @@ export function NeptunPanel() {
   const [urlError, setUrlError] = useState<string>();
   const [confirmingDisconnect, setConfirmingDisconnect] = useState(false);
 
-  const status = useQuery({ queryKey: neptunKey, queryFn: () => unwrap(api.GET('/integrations/neptun')) });
+  const status = useQuery({ queryKey: neptunKey, queryFn: () => unwrap(api.GET('/integrations/neptun')), meta: { silent: true } });
 
   const refreshAll = (next?: Schemas['NeptunConnection']) => {
     if (next) queryClient.setQueryData(neptunKey, next);
@@ -110,6 +111,7 @@ export function NeptunPanel() {
     upload.mutate(file);
   }
 
+  if (status.isError) return <QueryError compact what="your Neptun connection" error={status.error} onRetry={() => void status.refetch()} />;
   const conn = status.data;
   if (!conn) return null;
   const badge = statusBadge[conn.status];

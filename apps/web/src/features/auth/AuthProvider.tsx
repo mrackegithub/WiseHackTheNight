@@ -34,9 +34,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [queryClient],
   );
 
+  const { refetch } = me;
+  const retryMe = useCallback(() => void refetch(), [refetch]);
+
   const value = useMemo(
-    () => ({ isAuthenticated, me: me.data, isLoadingMe: me.isPending && isAuthenticated, login, logout }),
-    [isAuthenticated, me.data, me.isPending, login, logout],
+    () => ({ isAuthenticated, me: me.data, isLoadingMe: me.isPending && isAuthenticated, meError: me.error, retryMe, login, logout }),
+    [isAuthenticated, me.data, me.isPending, me.error, retryMe, login, logout],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

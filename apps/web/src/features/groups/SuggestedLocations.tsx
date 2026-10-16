@@ -1,5 +1,6 @@
 import { lazy, Suspense, useMemo, useState } from 'react';
 import type { Schemas } from '@sgm/contracts';
+import { QueryError } from '../../components/QueryError';
 import { Spinner } from '../../components/Spinner';
 import { locationTypeLabels } from '../../lib/labels';
 import { useSuggestedLocations } from './queries';
@@ -45,6 +46,8 @@ export function SuggestedLocations({ groupId }: { groupId: string }) {
 
       {suggestions.isPending ? (
         <Spinner label="Finding places" />
+      ) : suggestions.isError ? (
+        <QueryError compact what="suggested places" error={suggestions.error} onRetry={() => void suggestions.refetch()} />
       ) : items.length === 0 ? (
         <p className="mt-3 text-sm text-slate-500">No {type ? locationTypeLabels[type].toLowerCase() : 'place'} within 3 km of the group. Try another type.</p>
       ) : (

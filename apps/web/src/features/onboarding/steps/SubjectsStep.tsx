@@ -4,6 +4,7 @@ import type { Schemas } from '@sgm/contracts';
 import { api } from '../../../api/client';
 import { unwrap } from '../../../api/errors';
 import { Button } from '../../../components/form/Button';
+import { QueryError } from '../../../components/QueryError';
 import { Spinner } from '../../../components/Spinner';
 import { useDebouncedValue } from '../../../hooks/useDebouncedValue';
 import { messageForError } from '../../../lib/error-messages';
@@ -17,6 +18,7 @@ const MAX_SUBJECTS = 30;
 export function SubjectsStep(props: StepProps) {
   const mine = useMySubjects();
   if (mine.isPending) return <Spinner label="Loading your subjects" />;
+  if (mine.isError) return <QueryError what="your subjects" error={mine.error} onRetry={() => void mine.refetch()} />;
   return <SubjectsEditor {...props} initial={mine.data ?? []} />;
 }
 
