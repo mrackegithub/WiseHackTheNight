@@ -1,6 +1,7 @@
 import { authHandlers } from './auth';
 import { calendarHandlers } from './calendar';
 import { locationHandlers } from './locations';
+import { matchingHandlers } from './matching';
 import { neptunHandlers } from './neptun';
 import { profileHandlers } from './profile';
 import { subjectHandlers } from './subjects';
@@ -15,4 +16,5 @@ export const handlers = [
   ...locationHandlers,
   ...calendarHandlers,
   ...neptunHandlers,
+  ...matchingHandlers,
 ];

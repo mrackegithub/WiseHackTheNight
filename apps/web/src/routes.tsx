@@ -4,6 +4,7 @@ import { GuestOnly } from './features/auth/GuestOnly';
 import { RequireAuth } from './features/auth/RequireAuth';
 import { RequireOnboarding } from './features/onboarding/RequireOnboarding';
 import { CalendarPage } from './pages/CalendarPage';
+import { DiscoverPage } from './pages/DiscoverPage';
 import { HomePage } from './pages/HomePage';
 import { LoginPage } from './pages/LoginPage';
 import { NotFoundPage } from './pages/NotFoundPage';
@@ -25,6 +26,7 @@ export const routes: RouteObject[] = [
             element: <RequireOnboarding />,
             children: [
               { index: true, element: <HomePage /> },
+              { path: '/discover', element: <DiscoverPage /> },
               { path: '/calendar', element: <CalendarPage /> },
             ],
           },
