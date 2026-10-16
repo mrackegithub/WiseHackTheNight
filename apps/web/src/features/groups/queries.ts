@@ -1,4 +1,5 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { Schemas } from '@sgm/contracts';
 import { api } from '../../api/client';
 import { unwrap } from '../../api/errors';
 import { nowInZone, toApiTime } from '../../lib/time';
@@ -35,6 +36,15 @@ export function useSuggestedSlots(groupId: string, days = 7, minMinutes = 60) {
         }),
       );
     },
+  });
+}
+
+export function useSuggestedLocations(groupId: string, type: Schemas['LocationType'] | null, limit = 5) {
+  return useQuery({
+    queryKey: [...groupKeys.detail(groupId), 'suggested-locations', type, limit],
+    queryFn: () =>
+      unwrap(api.GET('/groups/{groupId}/suggested-locations', { params: { path: { groupId }, query: { ...(type ? { type } : {}), limit } } })),
+    placeholderData: keepPreviousData,
   });
 }
 

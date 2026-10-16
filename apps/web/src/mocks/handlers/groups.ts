@@ -2,6 +2,7 @@ import { DateTime } from 'luxon';
 import { http, HttpResponse } from 'msw';
 import type { Schemas } from '@sgm/contracts';
 import { db, type MockUser } from '../db';
+import { suggestedLocations } from '../group-locations';
 import { suggestedSlots } from '../group-slots';
 import { isMember, toGroup, toGroupSummary } from '../groups';
 import { apiError, authed, url } from '../utils';
@@ -62,6 +63,21 @@ export const groupHandlers = [
         return apiError(422, 'VALIDATION_FAILED', 'Invalid range', [{ path: 'to', issue: 'from < to, max 31 days' }]);
       }
       return HttpResponse.json<Schemas['SuggestedSlot'][]>(suggestedSlots(group, from, to, minMinutes));
+    }),
+  ),
+
+  http.get(
+    url('/groups/:groupId/suggested-locations'),
+    authed((user, { params, request }) => {
+      const group = visibleGroup(user, params.groupId);
+      if (!group) return notFound();
+      const q = new URL(request.url).searchParams;
+      const type = q.get('type') as Schemas['LocationType'] | null;
+      if (type && !['LIBRARY', 'CAMPUS_ROOM', 'CAFE', 'COWORKING', 'OTHER'].includes(type)) {
+        return apiError(422, 'VALIDATION_FAILED', 'Invalid type', [{ path: 'type', issue: 'unknown location type' }]);
+      }
+      const limit = Math.min(Math.max(Number(q.get('limit') ?? 5) || 5, 1), 20);
+      return HttpResponse.json<Schemas['SuggestedLocation'][]>(suggestedLocations(group, user.me.id, type, limit));
     }),
   ),
 
