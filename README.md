@@ -1,21 +1,13 @@
-# WiseHackTheNight
+# Wise Hack The Night
 
-Submission for the 2026 Wise Hackathon Budapest.
+## Structure
 
-## Web app boilerplate
+- `web/` - React + Vite frontend
 
-A minimal static web app starter themed for the Wise Hack The Night event at BME.
-
-### Files
-
-- `index.html` - basic event landing page
-- `styles.css` - lightweight styling
-- `app.js` - simple CTA interaction
-
-### Run locally
+## Run
 
 ```bash
-python3 -m http.server 8765
+cd web
+npm install
+npm run dev
 ```
-
-Then open `http://127.0.0.1:8765`.
