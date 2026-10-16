@@ -6,6 +6,7 @@ import { Spinner } from '../components/Spinner';
 import { useAuth } from '../features/auth/auth-context';
 import { useGroup, useLeaveGroup } from '../features/groups/queries';
 import { SessionsList } from '../features/groups/SessionsList';
+import { SuggestedLocations } from '../features/groups/SuggestedLocations';
 import { SuggestedSlots } from '../features/groups/SuggestedSlots';
 import { initials, theirRole } from '../features/matching/card-helpers';
 import { messageForError } from '../lib/error-messages';
@@ -81,6 +82,7 @@ export function GroupPage() {
       </section>
 
       <SuggestedSlots group={g} />
+      <SuggestedLocations groupId={g.id} />
       <SessionsList groupId={g.id} />
 
       {isMember && (
