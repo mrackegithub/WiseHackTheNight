@@ -40,7 +40,7 @@ function matchWithPerson(user: MockUser, personId: string, subjectId: string): S
       { userId: personId, role: theirRole, isOwner: true, joinedAt: now },
       { userId: user.me.id, role: myRole, isOwner: false, joinedAt: now },
     ],
-    nextSessionAt: null,
+    sessions: [],
   };
   db.groups.set(group.id, group);
   return recordMatch(user, group, personId);

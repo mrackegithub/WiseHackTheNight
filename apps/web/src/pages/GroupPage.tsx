@@ -1,13 +1,23 @@
-import { Link, useParams } from 'react-router';
+import { useState } from 'react';
+import { Link, useNavigate, useParams } from 'react-router';
 import { ApiError } from '../api/errors';
+import { Button } from '../components/form/Button';
 import { Spinner } from '../components/Spinner';
-import { useGroup } from '../features/groups/queries';
+import { useAuth } from '../features/auth/auth-context';
+import { useGroup, useLeaveGroup } from '../features/groups/queries';
+import { SessionsList } from '../features/groups/SessionsList';
+import { SuggestedSlots } from '../features/groups/SuggestedSlots';
 import { initials, theirRole } from '../features/matching/card-helpers';
 import { messageForError } from '../lib/error-messages';
+import { toast } from '../lib/toast';
 
 export function GroupPage() {
   const { groupId = '' } = useParams();
+  const { me } = useAuth();
+  const navigate = useNavigate();
   const group = useGroup(groupId);
+  const leave = useLeaveGroup(groupId);
+  const [confirmLeave, setConfirmLeave] = useState(false);
 
   if (group.isPending) return <Spinner label="Loading group" />;
   if (group.isError) {
@@ -15,16 +25,30 @@ export function GroupPage() {
       <section className="py-16 text-center">
         <h1 className="text-2xl font-bold">{group.error instanceof ApiError && group.error.status === 404 ? 'Group not found' : "Couldn't load the group"}</h1>
         {!(group.error instanceof ApiError && group.error.status === 404) && <p className="mt-2 text-slate-600">{messageForError(group.error)}</p>}
-        <Link to="/discover" className="mt-4 inline-block text-indigo-700 hover:underline">
-          Back to Discover
+        <Link to="/groups" className="mt-4 inline-block text-indigo-700 hover:underline">
+          Back to my groups
         </Link>
       </section>
     );
   }
 
   const g = group.data;
+  const isMember = g.members.some((m) => m.user.id === me?.id);
+
+  function onLeave() {
+    leave.mutate(undefined, {
+      onSuccess: () => {
+        toast.info(`You left ${g.name}.`);
+        navigate('/groups', { replace: true });
+      },
+    });
+  }
+
   return (
     <section className="mx-auto flex max-w-2xl flex-col gap-4">
+      <Link to="/groups" className="text-sm text-indigo-700 hover:underline">
+        ← My groups
+      </Link>
       <header>
         <p className="text-sm text-slate-500">
           {g.subject.name} · {g.subject.code}
@@ -55,6 +79,29 @@ export function GroupPage() {
           ))}
         </ul>
       </section>
+
+      <SuggestedSlots group={g} />
+      <SessionsList groupId={g.id} />
+
+      {isMember && (
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {confirmLeave ? (
+            <>
+              <span className="text-sm text-slate-600">Leave {g.name}?</span>
+              <Button variant="danger" onClick={onLeave} loading={leave.isPending}>
+                Yes, leave
+              </Button>
+              <Button variant="ghost" onClick={() => setConfirmLeave(false)}>
+                Cancel
+              </Button>
+            </>
+          ) : (
+            <Button variant="ghost" onClick={() => setConfirmLeave(true)}>
+              Leave group
+            </Button>
+          )}
+        </div>
+      )}
     </section>
   );
 }
