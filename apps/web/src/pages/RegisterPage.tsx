@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { useMutation } from '@tanstack/react-query';
-import { Link, useNavigate } from 'react-router';
+import { Link } from 'react-router';
 import type { Schemas } from '@sgm/contracts';
 import { api } from '../api/client';
 import { ApiError, unwrap } from '../api/errors';
@@ -15,17 +15,13 @@ import { fieldErrors } from '../lib/field-errors';
 
 export function RegisterPage() {
   const { login } = useAuth();
-  const navigate = useNavigate();
   const [values, setValues] = useState<RegisterValues>({ displayName: '', email: '', password: '' });
   const [errors, setErrors] = useState<Partial<Record<keyof RegisterValues, string>>>({});
 
   const mutation = useMutation({
     mutationFn: (body: Schemas['RegisterRequest']) => unwrap(api.POST('/auth/register', { body })),
     meta: { silent: true },
-    onSuccess: (tokens) => {
-      login(tokens);
-      navigate('/', { replace: true });
-    },
+    onSuccess: login, // GuestOnly then redirects to /onboarding
     onError: (error) => setErrors(fieldErrors(error)),
   });
 

@@ -1,6 +1,6 @@
 import { http, HttpResponse } from 'msw';
 import type { Schemas } from '@sgm/contracts';
-import { db, findUserByEmail, issueTokens, nextId } from '../db';
+import { db, findUserByEmail, issueTokens, newMockUser, nextId } from '../db';
 import { apiError, url } from '../utils';
 
 export const authHandlers = [
@@ -15,22 +15,25 @@ export const authHandlers = [
     if (findUserByEmail(body.email)) return apiError(409, 'CONFLICT', 'Email already registered');
 
     const id = nextId();
-    db.users.set(id, {
-      password: body.password,
-      me: {
-        id,
-        email: body.email.trim().toLowerCase(),
-        displayName: name,
-        bio: null,
-        avatarUrl: null,
-        university: null,
-        faculty: null,
-        location: null,
-        interests: [],
-        onboardingComplete: false,
-        createdAt: new Date().toISOString(),
-      },
-    });
+    db.users.set(
+      id,
+      newMockUser(
+        {
+          id,
+          email: body.email.trim().toLowerCase(),
+          displayName: name,
+          bio: null,
+          avatarUrl: null,
+          university: null,
+          faculty: null,
+          location: null,
+          interests: [],
+          onboardingComplete: false,
+          createdAt: new Date().toISOString(),
+        },
+        body.password,
+      ),
+    );
     return HttpResponse.json<Schemas['AuthTokens']>(issueTokens(id), { status: 201 });
   }),
 
