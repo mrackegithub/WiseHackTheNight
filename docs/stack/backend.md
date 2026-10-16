@@ -11,6 +11,10 @@ Agent B appends a row in the **same commit** that changes a package.json, env va
 | @faker-js/faker | ^10.6.0 | prod | deterministic seed data (`faker.seed(42)`) | chore/phase-0 |
 | @sgm/contracts | workspace:* | prod | OpenAPI types for handler request/response shapes | chore/phase-0 |
 | @sgm/integrations | workspace:* | prod | integration ports (Agent C) | chore/phase-0 |
+| @fastify/cors | ^11.3.1 | prod | CORS support (allows frontend to reach API) | be/B1-core-plugins |
+| @fastify/jwt | ^10.2.4 | prod | JWT verification decorator and token signing | be/B1-core-plugins |
+| zod | ^4.6.7 | prod | request validation schemas and error details | be/B1-core-plugins |
+| argon2 | ^0.45.1 | prod | password hashing for authentication | be/B1-core-plugins |
 | prisma | ^6.19.3 | dev | CLI: migrate, generate. Configured by `prisma.config.ts` (schema folder `prisma/schema`, migrations in `prisma/migrations`) | chore/phase-0 |
 | tsx | ^4.23.15 | dev | runs TS directly: `dev` (watch) and `db:seed` | chore/phase-0 |
 | typescript | ~5.9.3 | dev | type checking (`strict`, Bundler resolution) | chore/phase-0 |
@@ -32,5 +36,7 @@ Agent B appends a row in the **same commit** that changes a package.json, env va
 | PORT | 4000 | API port |
 | HOST | localhost | interface the API binds to (`0.0.0.0` to expose it on the LAN) |
 | DATABASE_URL | postgresql://sgm:sgm@localhost:5432/sgm | Prisma connection string (`prisma.config.ts`, `dev` and `db:seed` load `apps/api/.env`) |
+| JWT_SECRET | change-me | secret key for signing/verifying JWT access tokens (`src/plugins/jwt.ts`) |
+| CORS_ORIGIN | http://localhost:5173 | allowed CORS origin for browser clients (`src/plugins/cors.ts`) |
 
 The other variables in `apps/api/.env.example` are pre-declared for later tickets and are not read yet.
