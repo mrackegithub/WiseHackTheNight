@@ -1,5 +1,6 @@
 import { authHandlers } from './auth';
 import { calendarHandlers } from './calendar';
+import { groupHandlers } from './groups';
 import { locationHandlers } from './locations';
 import { matchingHandlers } from './matching';
 import { neptunHandlers } from './neptun';
@@ -17,4 +18,5 @@ export const handlers = [
   ...calendarHandlers,
   ...neptunHandlers,
   ...matchingHandlers,
+  ...groupHandlers,
 ];

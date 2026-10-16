@@ -1,12 +1,12 @@
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import type { Schemas } from '@sgm/contracts';
 import { Spinner } from '../components/Spinner';
+import { MatchModal } from '../features/matching/MatchModal';
 import type { CandidateKind } from '../features/matching/queries';
 import { SwipeDeck } from '../features/matching/SwipeDeck';
 import { useMySubjects } from '../features/profile/queries';
 import { roleLabels } from '../lib/labels';
-import { toast } from '../lib/toast';
 
 export function DiscoverPage() {
   const [params, setParams] = useSearchParams();
@@ -18,9 +18,9 @@ export function DiscoverPage() {
 
   const set = (patch: Record<string, string>) => setParams({ ...Object.fromEntries(params), ...patch }, { replace: true });
 
-  const onMatch = useCallback((match: Schemas['Match']) => {
-    toast.success(match.otherUser ? `It's a match with ${match.otherUser.displayName}! You're now in a study group.` : `You joined the group for ${match.subject.name}!`);
-  }, []);
+  const [matched, setMatched] = useState<{ match: Schemas['Match']; candidate: Schemas['Candidate'] } | null>(null);
+  const onMatch = useCallback((match: Schemas['Match'], candidate: Schemas['Candidate']) => setMatched({ match, candidate }), []);
+  const closeMatch = useCallback(() => setMatched(null), []);
 
   if (mySubjects.isPending) return <Spinner label="Loading your subjects" />;
 
@@ -71,6 +71,7 @@ export function DiscoverPage() {
       </div>
 
       <SwipeDeck key={`${selected.subject.id}-${kind}`} subjectId={selected.subject.id} kind={kind} onMatch={onMatch} />
+      {matched && <MatchModal match={matched.match} candidate={matched.candidate} onClose={closeMatch} />}
     </section>
   );
 }

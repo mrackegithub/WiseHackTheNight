@@ -88,7 +88,8 @@ describe('DiscoverPage', () => {
 
     await user.click(screen.getByRole('button', { name: 'Like' }));
 
-    expect(await screen.findByText("It's a match with Anna Kovács! You're now in a study group.")).toBeInTheDocument();
+    const dialog = await screen.findByRole('dialog', { name: "It's a match!" });
+    expect(dialog).toHaveAccessibleDescription(/You and Anna Kovács both want to study Algorithms and Data Structures I/);
     expect(demo().matches[0]).toMatchObject({ otherUser: { displayName: 'Anna Kovács' }, subject: { name: 'Algorithms and Data Structures I' } });
     expect(db.groups.get(demo().matches[0].groupId)!.members).toHaveLength(2);
   });
@@ -104,7 +105,10 @@ describe('DiscoverPage', () => {
     expect(within(card).getByText('2/4 members')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Like' }));
-    expect(await screen.findByText('You joined the group for Algorithms and Data Structures I!')).toBeInTheDocument();
+    expect(await screen.findByRole('dialog', { name: "You're in!" })).toHaveAccessibleDescription(
+      'You joined Algo Night Owls for Algorithms and Data Structures I.',
+    );
+    await user.click(screen.getByRole('button', { name: 'Keep swiping' }));
     expect(await screen.findByText("You've seen everyone for now.")).toBeInTheDocument();
   });
 
