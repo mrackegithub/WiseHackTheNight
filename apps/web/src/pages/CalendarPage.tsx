@@ -5,6 +5,7 @@ import { Spinner } from '../components/Spinner';
 import { NeptunPanel } from '../features/calendar/NeptunPanel';
 import { useWeekAvailability, useWeekSchedule } from '../features/calendar/queries';
 import { WeekView } from '../features/calendar/WeekView';
+import { WindowsEditor } from '../features/calendar/WindowsEditor';
 import { formatMinutes } from '../lib/labels';
 import { formatWeekRange, minutesBetween, startOfWeek, ZONE } from '../lib/time';
 
@@ -66,6 +67,8 @@ export function CalendarPage() {
           )}
         </>
       )}
+
+      <WindowsEditor />
     </section>
   );
 }
