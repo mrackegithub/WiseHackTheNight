@@ -1,18 +1,29 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createBrowserRouter, RouterProvider } from 'react-router';
-import { HomePage } from './pages/HomePage';
+import { AppProviders } from './AppProviders';
+import { config } from './lib/config';
+import { createQueryClient } from './lib/query-client';
+import { routes } from './routes';
 import './index.css';
 
-const queryClient = new QueryClient();
+async function enableMocks() {
+  // import.meta.env.DEV is inlined by Vite, so production builds drop the mocks entirely.
+  if (!import.meta.env.DEV || !config.useMocks) return;
+  const { worker } = await import('./mocks/browser');
+  // The msw() Vite plugin serves the worker script at this URL during dev.
+  await worker.start({ serviceWorker: { url: '/mockServiceWorker.js' }, onUnhandledFrame: 'bypass', quiet: true });
+}
 
-const router = createBrowserRouter([{ path: '/', element: <HomePage /> }]);
+const queryClient = createQueryClient();
+const router = createBrowserRouter(routes);
+
+await enableMocks();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <QueryClientProvider client={queryClient}>
+    <AppProviders queryClient={queryClient}>
       <RouterProvider router={router} />
-    </QueryClientProvider>
+    </AppProviders>
   </StrictMode>,
 );
