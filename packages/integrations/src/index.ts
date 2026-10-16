@@ -30,3 +30,4 @@ export {
   type ParsedCalendarEvent,
   type ParseIcsOptions,
 } from './neptun/parser';
+export { encryptUrl, decryptUrl, getEncryptionKey } from './neptun/crypto';
