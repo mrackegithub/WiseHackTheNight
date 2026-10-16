@@ -1,4 +1,5 @@
 import type { Schemas } from '@sgm/contracts';
+import { defaultWindows, sampleTimetable, type TimetableEntry } from './calendar';
 import { interests } from './data/interests';
 import { subjectById } from './data/subjects';
 
@@ -12,6 +13,12 @@ export interface MockUser {
   subjects: Schemas['UserSubject'][];
   /** null until PUT /me/preferences was called (GET returns the defaults meanwhile). */
   preferences: Schemas['Preferences'] | null;
+  calendar: {
+    neptun: Schemas['NeptunConnection'];
+    /** Recurring classes imported from Neptun; expanded per requested range. */
+    timetable: TimetableEntry[];
+    windows: Schemas['WeeklyWindow'][];
+  };
 }
 
 export const DEMO_USER_ID = '00000000-0000-4000-8000-000000000001';
@@ -29,7 +36,7 @@ export const defaultPreferences = (): Schemas['Preferences'] => ({
 });
 
 /** Bump when the shape below changes, so stale browser-saved mock data is discarded instead of crashing. */
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 
 const userSubject = (subjectId: string, role: Schemas['RoleTag'], confidence = 3): Schemas['UserSubject'] => ({
   subject: subjectById(subjectId)!,
@@ -38,7 +45,13 @@ const userSubject = (subjectId: string, role: Schemas['RoleTag'], confidence = 3
 });
 
 export function newMockUser(me: Schemas['Me'], password: string): MockUser {
-  return { me, password, subjects: [], preferences: null };
+  return {
+    me,
+    password,
+    subjects: [],
+    preferences: null,
+    calendar: { neptun: { connected: false, status: 'NOT_CONNECTED', lastSyncedAt: null, lastError: null, eventCount: 0 }, timetable: [], windows: defaultWindows() },
+  };
 }
 
 /**
@@ -75,6 +88,11 @@ function seed() {
       userSubject('00000000-0000-4000-8001-000000000009', 'PEER'),
     ],
     preferences: { ...defaultPreferences(), groupSizeMax: 3, maxDistanceKm: 4, locationTypes: ['LIBRARY', 'CAFE'], mode: 'IN_PERSON' },
+  };
+  demo.calendar = {
+    neptun: { connected: true, status: 'OK', lastSyncedAt: '2026-10-15T06:00:00Z', lastError: null, eventCount: 112 },
+    timetable: sampleTimetable,
+    windows: defaultWindows(),
   };
 
   return {
