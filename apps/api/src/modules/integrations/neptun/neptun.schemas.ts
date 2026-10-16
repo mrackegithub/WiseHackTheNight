@@ -38,6 +38,10 @@ export const weeklyWindowSchema = z
 
 export const replaceAvailabilitySchema = z.array(weeklyWindowSchema);
 
+export const connectNeptunSchema = z.object({
+  icsUrl: z.string().min(1, { message: 'icsUrl is required' }),
+});
+
 export type ScheduleQuery = z.infer<typeof scheduleQuerySchema>;
 export type WeeklyWindowInput = z.infer<typeof weeklyWindowSchema>;
-
+export type ConnectNeptunInput = z.infer<typeof connectNeptunSchema>;
