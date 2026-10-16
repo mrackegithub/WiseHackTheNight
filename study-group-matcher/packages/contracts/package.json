@@ -7,5 +7,9 @@
   "scripts": {
     "generate": "openapi-typescript ../../contracts/openapi.yaml -o src/generated.ts",
     "lint": "redocly lint --config ../../contracts/redocly.yaml ../../contracts/openapi.yaml"
+  },
+  "devDependencies": {
+    "@redocly/cli": "^2.64.1",
+    "openapi-typescript": "^7.13.0"
   }
 }
