@@ -12,8 +12,10 @@ import { useAuth } from '../features/auth/auth-context';
 import { validateRegister, type RegisterValues } from '../features/auth/validation';
 import { messageForError } from '../lib/error-messages';
 import { fieldErrors } from '../lib/field-errors';
+import { usePageTitle } from '../hooks/usePageTitle';
 
 export function RegisterPage() {
+  usePageTitle('Create account');
   const { login } = useAuth();
   const [values, setValues] = useState<RegisterValues>({ displayName: '', email: '', password: '' });
   const [errors, setErrors] = useState<Partial<Record<keyof RegisterValues, string>>>({});

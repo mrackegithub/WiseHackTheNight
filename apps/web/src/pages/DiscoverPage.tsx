@@ -8,8 +8,10 @@ import type { CandidateKind } from '../features/matching/queries';
 import { SwipeDeck } from '../features/matching/SwipeDeck';
 import { useMySubjects } from '../features/profile/queries';
 import { roleLabels } from '../lib/labels';
+import { usePageTitle } from '../hooks/usePageTitle';
 
 export function DiscoverPage() {
+  usePageTitle('Discover');
   const [params, setParams] = useSearchParams();
   const mySubjects = useMySubjects();
   const kind: CandidateKind = params.get('kind') === 'group' ? 'group' : 'user';

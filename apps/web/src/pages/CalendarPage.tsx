@@ -9,8 +9,10 @@ import { WeekView } from '../features/calendar/WeekView';
 import { WindowsEditor } from '../features/calendar/WindowsEditor';
 import { formatMinutes } from '../lib/labels';
 import { formatWeekRange, minutesBetween, startOfWeek, ZONE } from '../lib/time';
+import { usePageTitle } from '../hooks/usePageTitle';
 
 export function CalendarPage() {
+  usePageTitle('Calendar');
   const [params, setParams] = useSearchParams();
   const requested = params.get('week') ? DateTime.fromISO(params.get('week')!, { zone: ZONE }) : null;
   const weekStart = startOfWeek(requested?.isValid ? requested : undefined);
