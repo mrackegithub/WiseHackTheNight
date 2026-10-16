@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
+import { AnimatePresence, MotionConfig } from 'framer-motion';
 import type { Schemas } from '@sgm/contracts';
 import { Button } from '../../components/form/Button';
 import { Spinner } from '../../components/Spinner';
 import { CandidateCard } from './CandidateCard';
 import { useCandidates, useSwipe, type CandidateKind } from './queries';
+import { SwipeCard, type ExitDirection } from './SwipeCard';
 
 type Direction = Schemas['SwipeRequest']['direction'];
 
@@ -20,6 +22,7 @@ export function SwipeDeck({ subjectId, kind, onMatch }: SwipeDeckProps) {
   const candidates = useCandidates(subjectId, kind);
   const swipe = useSwipe();
   const [gone, setGone] = useState<ReadonlySet<string>>(new Set());
+  const [exitDirection, setExitDirection] = useState<ExitDirection>(1);
 
   const queue = (candidates.data ?? []).filter((c) => !gone.has(c.id));
   const top = queue[0];
@@ -27,6 +30,7 @@ export function SwipeDeck({ subjectId, kind, onMatch }: SwipeDeckProps) {
   const decide = useCallback(
     (direction: Direction) => {
       if (!top) return;
+      setExitDirection(direction === 'LIKE' ? 1 : -1); // the card flies the way it was swiped
       setGone((prev) => new Set(prev).add(top.id));
       swipe.mutate(
         { targetKind: top.kind, targetId: top.id, subjectId, direction },
@@ -69,12 +73,18 @@ export function SwipeDeck({ subjectId, kind, onMatch }: SwipeDeckProps) {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="relative">
-        {queue[1] && <div className="absolute inset-x-3 -bottom-2 h-full rounded-2xl border border-slate-200 bg-white/70" aria-hidden />}
-        <div className="relative" aria-live="polite">
-          <CandidateCard key={top.id} candidate={top} />
+      <MotionConfig reducedMotion="user">
+        <div className="relative">
+          {queue[1] && <div className="absolute inset-x-3 -bottom-2 h-full rounded-2xl border border-slate-200 bg-white/70" aria-hidden />}
+          <div className="relative" aria-live="polite">
+            <AnimatePresence initial={false} custom={exitDirection}>
+              <SwipeCard key={top.id} onSwipe={decide}>
+                <CandidateCard candidate={top} />
+              </SwipeCard>
+            </AnimatePresence>
+          </div>
         </div>
-      </div>
+      </MotionConfig>
       <div className="flex items-center justify-center gap-6">
         <button
           type="button"
@@ -94,7 +104,7 @@ export function SwipeDeck({ subjectId, kind, onMatch }: SwipeDeckProps) {
         </button>
       </div>
       <p className="text-center text-xs text-slate-500">
-        Tip: use <kbd className="rounded border px-1">←</kbd> to pass and <kbd className="rounded border px-1">→</kbd> to like.
+        Drag the card, or use <kbd className="rounded border px-1">←</kbd> to pass and <kbd className="rounded border px-1">→</kbd> to like.
       </p>
     </div>
   );
