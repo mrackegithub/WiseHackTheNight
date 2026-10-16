@@ -1,7 +1,8 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router';
-import { meQueryKey } from '../features/auth/auth-context';
+import { meQuery } from '../features/auth/auth-context';
 import { InterestsStep } from '../features/onboarding/steps/InterestsStep';
+import { LocationStep } from '../features/onboarding/steps/LocationStep';
 import { PreferencesStep } from '../features/onboarding/steps/PreferencesStep';
 import { ProfileStep } from '../features/onboarding/steps/ProfileStep';
 import { SubjectsStep } from '../features/onboarding/steps/SubjectsStep';
@@ -13,6 +14,7 @@ const steps: { id: string; label: string; Component: (props: StepProps) => React
   { id: 'subjects', label: 'Subjects', Component: SubjectsStep },
   { id: 'interests', label: 'Interests', Component: InterestsStep },
   { id: 'preferences', label: 'Preferences', Component: PreferencesStep },
+  { id: 'location', label: 'Location', Component: LocationStep },
 ];
 
 export function OnboardingPage() {
@@ -25,8 +27,12 @@ export function OnboardingPage() {
   const goTo = (i: number) => setParams({ step: steps[i].id });
 
   async function finish() {
-    // The server decides onboardingComplete; refetch so guards see the new value.
-    await queryClient.invalidateQueries({ queryKey: meQueryKey });
+    // The server decides onboardingComplete (see docs/handoffs/fe-to-be-onboarding-complete.md).
+    const me = await queryClient.fetchQuery({ ...meQuery, staleTime: 0 });
+    if (!me.onboardingComplete) {
+      toast.error('Almost there: add at least one subject and save your preferences.');
+      return;
+    }
     toast.success("You're all set! Start finding study partners.");
     navigate('/', { replace: true });
   }

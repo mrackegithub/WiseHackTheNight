@@ -41,6 +41,16 @@ export function newMockUser(me: Schemas['Me'], password: string): MockUser {
   return { me, password, subjects: [], preferences: null };
 }
 
+/**
+ * Server-side rule for Me.onboardingComplete, as proposed in docs/handoffs/fe-to-be-onboarding-complete.md:
+ * ≥1 subject, preferences saved, and a home location unless studying online only. Once true it stays true.
+ */
+export function updateOnboarding(user: MockUser) {
+  if (user.me.onboardingComplete) return;
+  const p = user.preferences;
+  user.me.onboardingComplete = user.subjects.length > 0 && p !== null && (user.me.location != null || p.mode === 'ONLINE');
+}
+
 function seed() {
   const demo: MockUser = {
     ...newMockUser(

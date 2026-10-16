@@ -1,5 +1,8 @@
 import { createContext, useContext } from 'react';
+import { queryOptions } from '@tanstack/react-query';
 import type { Schemas } from '@sgm/contracts';
+import { api } from '../../api/client';
+import { unwrap } from '../../api/errors';
 import type { AuthTokens } from '../../api/tokens';
 
 export interface AuthContextValue {
@@ -14,6 +17,9 @@ export interface AuthContextValue {
 export const AuthContext = createContext<AuthContextValue | null>(null);
 
 export const meQueryKey = ['me'] as const;
+
+/** GET /me. AuthProvider owns fetching; other components may read the cache with `{ ...meQuery, enabled: false }`. */
+export const meQuery = queryOptions({ queryKey: meQueryKey, queryFn: () => unwrap(api.GET('/me')) });
 
 export function useAuth() {
   const ctx = useContext(AuthContext);
