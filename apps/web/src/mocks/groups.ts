@@ -18,7 +18,7 @@ export interface MockGroup {
   maxSize: number;
   isOpen: boolean;
   members: MockGroupMember[];
-  nextSessionAt: string | null;
+  sessions: Schemas['StudySession'][];
 }
 
 /** PublicUser for a seeded classmate or a mock-registered user (never exposes email/location). */
@@ -29,13 +29,20 @@ export function publicUser(userId: string): Schemas['PublicUser'] {
   return { id: userId, displayName: me?.displayName ?? 'Unknown', avatarUrl: me?.avatarUrl ?? null, faculty: me?.faculty ?? null, bio: me?.bio ?? null };
 }
 
+/** Start of the next PLANNED session that hasn't started yet. */
+export function nextSessionAt(g: MockGroup): string | null {
+  const now = Date.now();
+  const upcoming = g.sessions.filter((s) => s.status === 'PLANNED' && Date.parse(s.start) > now).map((s) => s.start);
+  return upcoming.sort()[0] ?? null;
+}
+
 export const toGroupSummary = (g: MockGroup): Schemas['GroupSummary'] => ({
   id: g.id,
   name: g.name,
   subject: subjectById(g.subjectId)!,
   memberCount: g.members.length,
   maxSize: g.maxSize,
-  nextSessionAt: g.nextSessionAt,
+  nextSessionAt: nextSessionAt(g),
 });
 
 export const toGroup = (g: MockGroup): Schemas['Group'] => ({

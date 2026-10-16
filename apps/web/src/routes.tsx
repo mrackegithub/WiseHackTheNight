@@ -6,6 +6,7 @@ import { RequireOnboarding } from './features/onboarding/RequireOnboarding';
 import { CalendarPage } from './pages/CalendarPage';
 import { DiscoverPage } from './pages/DiscoverPage';
 import { GroupPage } from './pages/GroupPage';
+import { GroupsPage } from './pages/GroupsPage';
 import { HomePage } from './pages/HomePage';
 import { LoginPage } from './pages/LoginPage';
 import { NotFoundPage } from './pages/NotFoundPage';
@@ -29,6 +30,7 @@ export const routes: RouteObject[] = [
               { index: true, element: <HomePage /> },
               { path: '/discover', element: <DiscoverPage /> },
               { path: '/calendar', element: <CalendarPage /> },
+              { path: '/groups', element: <GroupsPage /> },
               { path: '/groups/:groupId', element: <GroupPage /> },
             ],
           },

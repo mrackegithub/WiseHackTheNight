@@ -50,7 +50,7 @@ export const defaultPreferences = (): Schemas['Preferences'] => ({
 });
 
 /** Bump when the shape below changes, so stale browser-saved mock data is discarded instead of crashing. */
-const DB_VERSION = 6;
+const DB_VERSION = 7;
 
 const userSubject = (subjectId: string, role: Schemas['RoleTag'], confidence = 3): Schemas['UserSubject'] => ({
   subject: subjectById(subjectId)!,
@@ -80,11 +80,15 @@ function seedGroups(): Map<string, MockGroup> {
   const [algo, db, ana] = [subjectCatalogue[0].id, subjectCatalogue[8].id, subjectCatalogue[15].id];
   const p = (i: number) => people[i].user.id;
   const member = (userId: string, role: Schemas['RoleTag'], isOwner = false) => ({ userId, role, isOwner, joinedAt: '2026-10-01T10:00:00Z' });
+  const session = (id: string, groupId: string, start: string, end: string, status: Schemas['StudySession']['status'], onlineUrl: string | null): Schemas['StudySession'] => ({ id, groupId, start, end, status, location: null, onlineUrl, bookingId: null });
   const groups: MockGroup[] = [
-    { id: '00000000-0000-4000-8005-000000000001', name: 'Algo Night Owls', description: 'Late-evening problem sets, mostly graph algorithms.', subjectId: algo, maxSize: 4, isOpen: true, members: [member(p(6), 'NEEDS_HELP', true), member(p(1), 'CAN_EXPLAIN')], nextSessionAt: '2026-10-20T17:00:00Z' },
-    { id: '00000000-0000-4000-8005-000000000002', name: 'Analysis I survivors', description: 'Weekly practice sheet walkthroughs.', subjectId: ana, maxSize: 5, isOpen: true, members: [member(p(2), 'CAN_EXPLAIN', true), member(p(4), 'NEEDS_HELP'), member(p(13), 'NEEDS_HELP')], nextSessionAt: null },
-    { id: '00000000-0000-4000-8005-000000000003', name: 'SQL Squad', description: null, subjectId: db, maxSize: 3, isOpen: true, members: [member(p(3), 'CAN_EXPLAIN', true), member(p(10), 'CAN_EXPLAIN'), member(p(8), 'PEER')], nextSessionAt: null },
-    { id: '00000000-0000-4000-8005-000000000004', name: 'DB Thursday crew', description: 'We meet after the Thursday lecture.', subjectId: db, maxSize: 4, isOpen: true, members: [member(DEMO_USER_ID, 'PEER', true), member(p(11), 'PEER')], nextSessionAt: '2026-10-22T16:00:00Z' },
+    { id: '00000000-0000-4000-8005-000000000001', name: 'Algo Night Owls', description: 'Late-evening problem sets, mostly graph algorithms.', subjectId: algo, maxSize: 4, isOpen: true, members: [member(p(6), 'NEEDS_HELP', true), member(p(1), 'CAN_EXPLAIN')], sessions: [session('00000000-0000-4000-8006-000000000001', '00000000-0000-4000-8005-000000000001', '2026-10-20T17:00:00Z', '2026-10-20T18:30:00Z', 'PLANNED', 'https://meet.example.com/algo-night-owls')] },
+    { id: '00000000-0000-4000-8005-000000000002', name: 'Analysis I survivors', description: 'Weekly practice sheet walkthroughs.', subjectId: ana, maxSize: 5, isOpen: true, members: [member(p(2), 'CAN_EXPLAIN', true), member(p(4), 'NEEDS_HELP'), member(p(13), 'NEEDS_HELP')], sessions: [] },
+    { id: '00000000-0000-4000-8005-000000000003', name: 'SQL Squad', description: null, subjectId: db, maxSize: 3, isOpen: true, members: [member(p(3), 'CAN_EXPLAIN', true), member(p(10), 'CAN_EXPLAIN'), member(p(8), 'PEER')], sessions: [] },
+    { id: '00000000-0000-4000-8005-000000000004', name: 'DB Thursday crew', description: 'We meet after the Thursday lecture.', subjectId: db, maxSize: 4, isOpen: true, members: [member(DEMO_USER_ID, 'PEER', true), member(p(11), 'PEER')], sessions: [
+      session('00000000-0000-4000-8006-000000000002', '00000000-0000-4000-8005-000000000004', '2026-10-08T16:00:00Z', '2026-10-08T17:30:00Z', 'DONE', null),
+      session('00000000-0000-4000-8006-000000000003', '00000000-0000-4000-8005-000000000004', '2026-10-22T16:00:00Z', '2026-10-22T17:30:00Z', 'PLANNED', null),
+    ] },
   ];
   return new Map(groups.map((g) => [g.id, g]));
 }

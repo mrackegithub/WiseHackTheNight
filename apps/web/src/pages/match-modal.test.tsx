@@ -71,7 +71,7 @@ describe('GroupPage', () => {
   it('shows a not-found state for unknown groups', async () => {
     renderApp('/groups/00000000-0000-4000-8005-999999999999');
     expect(await screen.findByRole('heading', { name: 'Group not found' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Back to Discover' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Back to my groups' })).toBeInTheDocument();
   });
 
   it("shows a seeded group the user belongs to", async () => {
