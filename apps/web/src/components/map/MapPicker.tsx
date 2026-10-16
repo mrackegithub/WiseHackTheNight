@@ -19,7 +19,8 @@ function ClickToPick({ onPick }: { onPick: (p: LatLng) => void }) {
 function FollowValue({ value }: { value: LatLng | null }) {
   const map = useMap();
   useEffect(() => {
-    if (value) map.setView(value, Math.max(map.getZoom(), 15));
+    // animate: false: a running zoom animation crashes Leaflet ("_leaflet_pos") if the page unmounts the map
+    if (value) map.setView(value, Math.max(map.getZoom(), 15), { animate: false });
   }, [map, value]);
   return null;
 }
