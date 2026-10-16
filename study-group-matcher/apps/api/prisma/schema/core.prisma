@@ -1,0 +1,188 @@
+// OWNER: Agent B (backend). Agent C must NOT edit this file.
+// Back-relations to integration models are pre-declared here in Phase 0 so that
+// Agent C never needs to touch it. Need a new one? -> docs/handoffs/ (see AGENTS.md)
+
+enum RoleTag {
+  NEEDS_HELP
+  CAN_EXPLAIN
+  PEER
+}
+
+enum StudyMode {
+  IN_PERSON
+  ONLINE
+  EITHER
+}
+
+enum SwipeDirection {
+  LIKE
+  PASS
+}
+
+enum SessionStatus {
+  PLANNED
+  CANCELLED
+  DONE
+}
+
+model User {
+  id                 String    @id @default(uuid()) @db.Uuid
+  email              String    @unique
+  passwordHash       String
+  displayName        String
+  bio                String?
+  avatarUrl          String?
+  university         String?
+  faculty            String?
+  homeLat            Float?    // rounded to 3 decimals (~100 m)
+  homeLng            Float?
+  homeLabel          String?
+  onboardingComplete Boolean   @default(false)
+  isSeed             Boolean   @default(false) // seeded fake users, safe to wipe
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  preferences      Preferences?
+  subjects         UserSubject[]
+  interests        UserInterest[]
+  memberships      GroupMember[]
+  swipesGiven      Swipe[]        @relation("swiper")
+  refreshTokens    RefreshToken[]
+
+  // ── integration back-relations (models live in integrations.prisma) ──
+  neptunConnection    NeptunConnection?
+  calendarEvents      CalendarEvent[]
+  availabilityWindows AvailabilityWindow[]
+  bookingsMade        Booking[]
+
+  @@index([homeLat, homeLng])
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  tokenHash String   @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Preferences {
+  userId               String    @id @db.Uuid
+  groupSizeMin         Int       @default(2)
+  groupSizeMax         Int       @default(4)
+  maxDistanceKm        Float     @default(5)
+  sessionLengthMinutes Int       @default(90)
+  locationTypes        LocationType[]
+  mode                 StudyMode @default(EITHER)
+  user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Subject {
+  id      String  @id @default(uuid()) @db.Uuid
+  code    String  @unique // Neptun course code
+  name    String
+  credits Int?
+
+  users  UserSubject[]
+  groups Group[]
+  swipes Swipe[]
+}
+
+model UserSubject {
+  userId     String  @db.Uuid
+  subjectId  String  @db.Uuid
+  role       RoleTag
+  confidence Int     @default(3)
+  user       User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subject    Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+
+  @@id([userId, subjectId])
+  @@index([subjectId, role])
+}
+
+model Interest {
+  id    String         @id @default(uuid()) @db.Uuid
+  slug  String         @unique
+  label String
+  users UserInterest[]
+}
+
+model UserInterest {
+  userId     String   @db.Uuid
+  interestId String   @db.Uuid
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  interest   Interest @relation(fields: [interestId], references: [id], onDelete: Cascade)
+
+  @@id([userId, interestId])
+}
+
+model Swipe {
+  id            String         @id @default(uuid()) @db.Uuid
+  swiperId      String         @db.Uuid
+  targetKind    String         // "user" | "group"
+  targetId      String         @db.Uuid
+  subjectId     String         @db.Uuid
+  direction     SwipeDirection
+  createdAt     DateTime       @default(now())
+  swiper        User           @relation("swiper", fields: [swiperId], references: [id], onDelete: Cascade)
+  subject       Subject        @relation(fields: [subjectId], references: [id])
+
+  @@unique([swiperId, targetKind, targetId, subjectId])
+  @@index([targetKind, targetId, subjectId, direction])
+}
+
+model Group {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String
+  description String?
+  subjectId   String   @db.Uuid
+  maxSize     Int
+  isOpen      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  subject     Subject  @relation(fields: [subjectId], references: [id])
+  members     GroupMember[]
+  sessions    StudySession[]
+  matches     Match[]
+
+  // integration back-relation
+  bookings Booking[]
+}
+
+model GroupMember {
+  groupId  String   @db.Uuid
+  userId   String   @db.Uuid
+  role     RoleTag
+  isOwner  Boolean  @default(false)
+  joinedAt DateTime @default(now())
+  group    Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([groupId, userId])
+}
+
+model Match {
+  id        String   @id @default(uuid()) @db.Uuid
+  groupId   String   @db.Uuid
+  subjectId String   @db.Uuid
+  userAId   String   @db.Uuid
+  userBId   String?  @db.Uuid // null when a user joined a group
+  createdAt DateTime @default(now())
+  group     Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+}
+
+model StudySession {
+  id         String        @id @default(uuid()) @db.Uuid
+  groupId    String        @db.Uuid
+  start      DateTime
+  end        DateTime
+  locationId String?       @db.Uuid
+  onlineUrl  String?
+  bookingId  String?       @unique @db.Uuid
+  status     SessionStatus @default(PLANNED)
+  group      Group         @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  location   Location?     @relation(fields: [locationId], references: [id])
+  booking    Booking?      @relation(fields: [bookingId], references: [id])
+
+  @@index([groupId, start])
+}

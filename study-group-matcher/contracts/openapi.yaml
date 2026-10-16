@@ -1,0 +1,1098 @@
+openapi: 3.1.0
+info:
+  title: Study Group Matcher API
+  version: 0.1.0
+  description: |
+    THE single source of truth between Frontend (Agent A), Backend (Agent B) and
+    Integrations (Agent C). Changes follow the "Contract Change" process in AGENTS.md.
+
+    Conventions
+    - Base path: /api/v1
+    - Auth: `Authorization: Bearer <accessToken>` (JWT, 15 min) + refresh token (7 days)
+    - IDs: UUID v4 strings. Timestamps: ISO 8601 UTC (`2026-10-16T08:00:00Z`).
+      The UI renders in Europe/Budapest.
+    - Lists: cursor pagination `?cursor=&limit=` -> `{ items, nextCursor }`
+    - Errors: always the `Error` schema with a stable machine-readable `code`.
+    - `x-owner` on every operation names the agent that implements it.
+servers:
+  - url: http://localhost:4000/api/v1
+    description: Local API
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: system
+  - name: auth
+  - name: profile
+  - name: subjects
+  - name: calendar
+  - name: matching
+  - name: groups
+  - name: locations
+  - name: rooms
+
+paths:
+  # ───────────────────────────── system ─────────────────────────────
+  /health:
+    get:
+      tags: [system]
+      operationId: getHealth
+      x-owner: backend
+      security: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, version]
+                properties:
+                  status: { type: string, enum: [ok, degraded] }
+                  version: { type: string }
+
+  # ───────────────────────────── auth ─────────────────────────────
+  /auth/register:
+    post:
+      tags: [auth]
+      operationId: register
+      x-owner: backend
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RegisterRequest" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuthTokens" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /auth/login:
+    post:
+      tags: [auth]
+      operationId: login
+      x-owner: backend
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LoginRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuthTokens" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /auth/refresh:
+    post:
+      tags: [auth]
+      operationId: refreshToken
+      x-owner: backend
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuthTokens" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  # ───────────────────────────── profile ─────────────────────────────
+  /me:
+    get:
+      tags: [profile]
+      operationId: getMe
+      x-owner: backend
+      responses:
+        "200":
+          description: Current user's full profile
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Me" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    patch:
+      tags: [profile]
+      operationId: updateMe
+      x-owner: backend
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateMeRequest" }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Me" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /me/subjects:
+    get:
+      tags: [profile]
+      operationId: getMySubjects
+      x-owner: backend
+      responses:
+        "200":
+          description: Subjects with role tags
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/UserSubject" }
+    put:
+      tags: [profile]
+      operationId: replaceMySubjects
+      x-owner: backend
+      description: Replaces the full set of subject/role-tag pairs.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              maxItems: 30
+              items: { $ref: "#/components/schemas/UserSubjectInput" }
+      responses:
+        "200":
+          description: Saved
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/UserSubject" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /me/preferences:
+    get:
+      tags: [profile]
+      operationId: getMyPreferences
+      x-owner: backend
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Preferences" }
+    put:
+      tags: [profile]
+      operationId: updateMyPreferences
+      x-owner: backend
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Preferences" }
+      responses:
+        "200":
+          description: Saved
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Preferences" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /me/location:
+    put:
+      tags: [profile]
+      operationId: updateMyLocation
+      x-owner: backend
+      description: Home base used for proximity matching. Rounded to ~100 m before storage.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/GeoPointInput" }
+      responses:
+        "200":
+          description: Saved
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GeoPoint" }
+
+  /interests:
+    get:
+      tags: [subjects]
+      operationId: listInterests
+      x-owner: backend
+      responses:
+        "200":
+          description: Catalogue of interest tags
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Interest" }
+
+  /subjects:
+    get:
+      tags: [subjects]
+      operationId: listSubjects
+      x-owner: backend
+      parameters:
+        - { name: q, in: query, schema: { type: string }, description: "Search by name or Neptun code" }
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, nextCursor]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/Subject" } }
+                  nextCursor: { type: [string, "null"] }
+
+  # ───────────────────────────── calendar (Neptun) ─────────────────────────────
+  /integrations/neptun:
+    get:
+      tags: [calendar]
+      operationId: getNeptunStatus
+      x-owner: integrations
+      responses:
+        "200":
+          description: Connection + last sync status
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NeptunConnection" }
+    put:
+      tags: [calendar]
+      operationId: connectNeptun
+      x-owner: integrations
+      description: |
+        Stores the user's Neptun calendar link (the one Neptun offers for Google Calendar import,
+        an iCal feed; `webcal://` is accepted and normalised to `https://`), encrypted at rest, then triggers a sync.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [icsUrl]
+              properties:
+                icsUrl: { type: string, format: uri }
+      responses:
+        "200":
+          description: Connected
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NeptunConnection" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+    delete:
+      tags: [calendar]
+      operationId: disconnectNeptun
+      x-owner: integrations
+      responses:
+        "204": { description: Disconnected; imported events deleted }
+
+  /integrations/neptun/upload:
+    post:
+      tags: [calendar]
+      operationId: uploadNeptunIcs
+      x-owner: integrations
+      description: Alternative to a URL — upload an exported .ics file (max 2 MB).
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary }
+      responses:
+        "200":
+          description: Imported
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SyncResult" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /integrations/neptun/sync:
+    post:
+      tags: [calendar]
+      operationId: syncNeptun
+      x-owner: integrations
+      responses:
+        "200":
+          description: Synced
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SyncResult" }
+        "409":
+          description: Not connected
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "502":
+          description: Neptun unreachable / invalid feed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /me/schedule:
+    get:
+      tags: [calendar]
+      operationId: getMySchedule
+      x-owner: integrations
+      description: Busy events (classes from Neptun + manual blocks).
+      parameters:
+        - $ref: "#/components/parameters/From"
+        - $ref: "#/components/parameters/To"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/CalendarEvent" }
+
+  /me/availability:
+    get:
+      tags: [calendar]
+      operationId: getMyAvailability
+      x-owner: integrations
+      description: Free slots = weekly availability window minus busy events, min 30 min each.
+      parameters:
+        - $ref: "#/components/parameters/From"
+        - $ref: "#/components/parameters/To"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/TimeSlot" }
+    put:
+      tags: [calendar]
+      operationId: replaceMyAvailabilityWindows
+      x-owner: integrations
+      description: Recurring weekly windows when the user is willing to study at all.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items: { $ref: "#/components/schemas/WeeklyWindow" }
+      responses:
+        "200":
+          description: Saved
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/WeeklyWindow" }
+
+  # ───────────────────────────── matching ─────────────────────────────
+  /matching/candidates:
+    get:
+      tags: [matching]
+      operationId: getCandidates
+      x-owner: backend
+      description: The swipe deck. Excludes anyone already swiped within 14 days.
+      parameters:
+        - { name: subjectId, in: query, required: true, schema: { type: string, format: uuid } }
+        - { name: kind, in: query, schema: { type: string, enum: [user, group], default: user } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 30, default: 10 } }
+      responses:
+        "200":
+          description: Ranked candidates, best first
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Candidate" }
+
+  /matching/swipes:
+    post:
+      tags: [matching]
+      operationId: swipe
+      x-owner: backend
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SwipeRequest" }
+      responses:
+        "200":
+          description: Recorded. `match` is set when the like is mutual (or a group accepted).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SwipeResult" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /matching/matches:
+    get:
+      tags: [matching]
+      operationId: listMatches
+      x-owner: backend
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, nextCursor]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/Match" } }
+                  nextCursor: { type: [string, "null"] }
+
+  # ───────────────────────────── groups & sessions ─────────────────────────────
+  /groups:
+    get:
+      tags: [groups]
+      operationId: listMyGroups
+      x-owner: backend
+      responses:
+        "200":
+          description: Groups the user belongs to
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/GroupSummary" }
+    post:
+      tags: [groups]
+      operationId: createGroup
+      x-owner: backend
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateGroupRequest" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Group" }
+
+  /groups/{groupId}:
+    parameters:
+      - $ref: "#/components/parameters/GroupId"
+    get:
+      tags: [groups]
+      operationId: getGroup
+      x-owner: backend
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Group" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /groups/{groupId}/members:
+    parameters:
+      - $ref: "#/components/parameters/GroupId"
+    post:
+      tags: [groups]
+      operationId: joinGroup
+      x-owner: backend
+      responses:
+        "200":
+          description: Joined
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Group" }
+        "409":
+          description: Group full or already a member
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+    delete:
+      tags: [groups]
+      operationId: leaveGroup
+      x-owner: backend
+      responses:
+        "204": { description: Left }
+
+  /groups/{groupId}/suggested-slots:
+    parameters:
+      - $ref: "#/components/parameters/GroupId"
+    get:
+      tags: [groups]
+      operationId: getGroupSuggestedSlots
+      x-owner: backend
+      description: Common free slots of all members, ranked (prefers ≥90 min, daytime, soonest).
+      parameters:
+        - $ref: "#/components/parameters/From"
+        - $ref: "#/components/parameters/To"
+        - { name: minMinutes, in: query, schema: { type: integer, default: 60, minimum: 30 } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/SuggestedSlot" }
+
+  /groups/{groupId}/suggested-locations:
+    parameters:
+      - $ref: "#/components/parameters/GroupId"
+    get:
+      tags: [groups, locations]
+      operationId: getGroupSuggestedLocations
+      x-owner: integrations
+      description: Locations near the members' geographic centroid, ranked by max member distance.
+      parameters:
+        - { name: type, in: query, schema: { $ref: "#/components/schemas/LocationType" } }
+        - { name: limit, in: query, schema: { type: integer, default: 5, maximum: 20 } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/SuggestedLocation" }
+
+  /groups/{groupId}/sessions:
+    parameters:
+      - $ref: "#/components/parameters/GroupId"
+    get:
+      tags: [groups]
+      operationId: listGroupSessions
+      x-owner: backend
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/StudySession" }
+    post:
+      tags: [groups]
+      operationId: createGroupSession
+      x-owner: backend
+      description: Schedules a session. If `bookingId` is given it must belong to this group.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateSessionRequest" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StudySession" }
+        "409":
+          description: A member is busy in that slot
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  # ───────────────────────────── locations & rooms ─────────────────────────────
+  /locations:
+    get:
+      tags: [locations]
+      operationId: listLocations
+      x-owner: integrations
+      parameters:
+        - { name: lat, in: query, schema: { type: number } }
+        - { name: lng, in: query, schema: { type: number } }
+        - { name: radiusKm, in: query, schema: { type: number, default: 3, maximum: 50 } }
+        - { name: type, in: query, schema: { $ref: "#/components/schemas/LocationType" } }
+      responses:
+        "200":
+          description: OK, sorted by distance when lat/lng given
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Location" }
+
+  /locations/geocode:
+    get:
+      tags: [locations]
+      operationId: geocode
+      x-owner: integrations
+      description: Address -> coordinates (server-side proxy to provider, cached, rate-limited).
+      parameters:
+        - { name: q, in: query, required: true, schema: { type: string, minLength: 3 } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/GeoPoint" }
+
+  /rooms:
+    get:
+      tags: [rooms]
+      operationId: searchRooms
+      x-owner: integrations
+      parameters:
+        - { name: locationId, in: query, schema: { type: string, format: uuid } }
+        - { name: start, in: query, required: true, schema: { type: string, format: date-time } }
+        - { name: end, in: query, required: true, schema: { type: string, format: date-time } }
+        - { name: capacity, in: query, schema: { type: integer, minimum: 1 } }
+      responses:
+        "200":
+          description: Rooms free for the whole interval
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Room" }
+
+  /bookings:
+    post:
+      tags: [rooms]
+      operationId: createBooking
+      x-owner: integrations
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateBookingRequest" }
+      responses:
+        "201":
+          description: Booked (or PENDING for providers that confirm asynchronously)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Booking" }
+        "409":
+          description: Slot taken
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /bookings/{bookingId}:
+    parameters:
+      - { name: bookingId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [rooms]
+      operationId: getBooking
+      x-owner: integrations
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Booking" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [rooms]
+      operationId: cancelBooking
+      x-owner: integrations
+      responses:
+        "204": { description: Cancelled }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    Cursor: { name: cursor, in: query, schema: { type: string } }
+    Limit: { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+    From: { name: from, in: query, required: true, schema: { type: string, format: date-time } }
+    To:
+      name: to
+      in: query
+      required: true
+      description: Max 31 days after `from`.
+      schema: { type: string, format: date-time }
+    GroupId: { name: groupId, in: path, required: true, schema: { type: string, format: uuid } }
+
+  responses:
+    Unauthorized:
+      description: Missing/invalid token
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    NotFound:
+      description: Not found
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    Conflict:
+      description: Conflict
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    ValidationError:
+      description: Request body/query invalid
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+
+  schemas:
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          description: Stable, UPPER_SNAKE. e.g. VALIDATION_FAILED, UNAUTHORIZED, NOT_FOUND, GROUP_FULL, SLOT_TAKEN, NEPTUN_UNREACHABLE
+          example: GROUP_FULL
+        message: { type: string }
+        details:
+          type: array
+          items:
+            type: object
+            properties:
+              path: { type: string }
+              issue: { type: string }
+
+    # auth
+    RegisterRequest:
+      type: object
+      required: [email, password, displayName]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, minLength: 8 }
+        displayName: { type: string, minLength: 2, maxLength: 50 }
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string }
+    AuthTokens:
+      type: object
+      required: [accessToken, refreshToken, expiresIn]
+      properties:
+        accessToken: { type: string }
+        refreshToken: { type: string }
+        expiresIn: { type: integer, description: seconds }
+
+    # profile
+    Me:
+      type: object
+      required: [id, email, displayName, onboardingComplete, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        displayName: { type: string }
+        bio: { type: [string, "null"], maxLength: 300 }
+        avatarUrl: { type: [string, "null"], format: uri }
+        university: { type: [string, "null"] }
+        faculty: { type: [string, "null"] }
+        location: { oneOf: [{ $ref: "#/components/schemas/GeoPoint" }, { type: "null" }] }
+        interests: { type: array, items: { $ref: "#/components/schemas/Interest" } }
+        onboardingComplete: { type: boolean }
+        createdAt: { type: string, format: date-time }
+    UpdateMeRequest:
+      type: object
+      properties:
+        displayName: { type: string, minLength: 2, maxLength: 50 }
+        bio: { type: [string, "null"], maxLength: 300 }
+        avatarUrl: { type: [string, "null"], format: uri }
+        university: { type: [string, "null"] }
+        faculty: { type: [string, "null"] }
+        interestIds: { type: array, items: { type: string, format: uuid }, maxItems: 15 }
+    PublicUser:
+      type: object
+      required: [id, displayName]
+      properties:
+        id: { type: string, format: uuid }
+        displayName: { type: string }
+        avatarUrl: { type: [string, "null"] }
+        faculty: { type: [string, "null"] }
+        bio: { type: [string, "null"] }
+
+    RoleTag:
+      type: string
+      enum: [NEEDS_HELP, CAN_EXPLAIN, PEER]
+      description: |
+        NEEDS_HELP = "I need help", CAN_EXPLAIN = "I can explain", PEER = same level, just study together.
+    Subject:
+      type: object
+      required: [id, code, name]
+      properties:
+        id: { type: string, format: uuid }
+        code: { type: string, example: "IP-18AA1E" }
+        name: { type: string, example: "Algorithms and Data Structures I" }
+        credits: { type: [integer, "null"] }
+    UserSubjectInput:
+      type: object
+      required: [subjectId, role]
+      properties:
+        subjectId: { type: string, format: uuid }
+        role: { $ref: "#/components/schemas/RoleTag" }
+        confidence: { type: integer, minimum: 1, maximum: 5, default: 3 }
+    UserSubject:
+      type: object
+      required: [subject, role, confidence]
+      properties:
+        subject: { $ref: "#/components/schemas/Subject" }
+        role: { $ref: "#/components/schemas/RoleTag" }
+        confidence: { type: integer, minimum: 1, maximum: 5 }
+    Interest:
+      type: object
+      required: [id, slug, label]
+      properties:
+        id: { type: string, format: uuid }
+        slug: { type: string, example: "exam-prep" }
+        label: { type: string, example: "Exam prep" }
+    Preferences:
+      type: object
+      required: [groupSizeMin, groupSizeMax, maxDistanceKm, sessionLengthMinutes, locationTypes, mode]
+      properties:
+        groupSizeMin: { type: integer, minimum: 2, maximum: 10, default: 2 }
+        groupSizeMax: { type: integer, minimum: 2, maximum: 10, default: 4 }
+        maxDistanceKm: { type: number, minimum: 0.5, maximum: 50, default: 5 }
+        sessionLengthMinutes: { type: integer, minimum: 30, maximum: 240, default: 90 }
+        locationTypes: { type: array, items: { $ref: "#/components/schemas/LocationType" } }
+        mode: { type: string, enum: [IN_PERSON, ONLINE, EITHER], default: EITHER }
+
+    # geo
+    GeoPointInput:
+      type: object
+      required: [lat, lng]
+      properties:
+        lat: { type: number, minimum: -90, maximum: 90 }
+        lng: { type: number, minimum: -180, maximum: 180 }
+        label: { type: string, maxLength: 120 }
+    GeoPoint:
+      allOf:
+        - $ref: "#/components/schemas/GeoPointInput"
+    LocationType:
+      type: string
+      enum: [LIBRARY, CAMPUS_ROOM, CAFE, COWORKING, OTHER]
+    Location:
+      type: object
+      required: [id, name, type, point, bookable]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        type: { $ref: "#/components/schemas/LocationType" }
+        address: { type: [string, "null"] }
+        point: { $ref: "#/components/schemas/GeoPoint" }
+        bookable: { type: boolean, description: "true if it has rooms via a booking provider" }
+        openingHours: { type: [string, "null"], description: "OSM opening_hours syntax" }
+        distanceKm: { type: [number, "null"] }
+    SuggestedLocation:
+      type: object
+      required: [location, maxMemberDistanceKm, avgMemberDistanceKm]
+      properties:
+        location: { $ref: "#/components/schemas/Location" }
+        maxMemberDistanceKm: { type: number }
+        avgMemberDistanceKm: { type: number }
+
+    # calendar
+    TimeSlot:
+      type: object
+      required: [start, end]
+      properties:
+        start: { type: string, format: date-time }
+        end: { type: string, format: date-time }
+    WeeklyWindow:
+      type: object
+      required: [weekday, startTime, endTime]
+      properties:
+        weekday: { type: integer, minimum: 1, maximum: 7, description: "1 = Monday (ISO)" }
+        startTime: { type: string, pattern: "^([01]\\d|2[0-3]):[0-5]\\d$", example: "08:00" }
+        endTime: { type: string, pattern: "^([01]\\d|2[0-3]):[0-5]\\d$", example: "20:00" }
+    CalendarEvent:
+      type: object
+      required: [id, title, start, end, source]
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        start: { type: string, format: date-time }
+        end: { type: string, format: date-time }
+        room: { type: [string, "null"] }
+        subjectCode: { type: [string, "null"] }
+        source: { type: string, enum: [NEPTUN, MANUAL, STUDY_SESSION] }
+    NeptunConnection:
+      type: object
+      required: [connected, status]
+      properties:
+        connected: { type: boolean }
+        status: { type: string, enum: [NOT_CONNECTED, OK, SYNCING, ERROR] }
+        lastSyncedAt: { type: [string, "null"], format: date-time }
+        lastError: { type: [string, "null"] }
+        eventCount: { type: integer }
+    SyncResult:
+      type: object
+      required: [imported, removed, subjectsLinked, syncedAt]
+      properties:
+        imported: { type: integer }
+        removed: { type: integer }
+        subjectsLinked:
+          type: integer
+          description: Subjects detected from course codes and added to /me/subjects as PEER (if not present)
+        syncedAt: { type: string, format: date-time }
+
+    # matching
+    ScoreBreakdown:
+      type: object
+      description: Each component in [0,1]; `total` is the weighted sum in [0,100].
+      required: [total, timeOverlap, roleComplement, interests, proximity, groupSizeFit]
+      properties:
+        total: { type: number }
+        timeOverlap: { type: number }
+        roleComplement: { type: number }
+        interests: { type: number }
+        proximity: { type: number }
+        groupSizeFit: { type: number }
+    Candidate:
+      type: object
+      required: [kind, id, subjectId, score, sharedSlots]
+      properties:
+        kind: { type: string, enum: [user, group] }
+        id: { type: string, format: uuid, description: "userId or groupId" }
+        subjectId: { type: string, format: uuid }
+        user: { $ref: "#/components/schemas/PublicUser" }
+        group: { $ref: "#/components/schemas/GroupSummary" }
+        role: { $ref: "#/components/schemas/RoleTag" }
+        distanceKm: { type: [number, "null"] }
+        sharedInterests: { type: array, items: { $ref: "#/components/schemas/Interest" } }
+        sharedSlots:
+          type: array
+          maxItems: 5
+          description: Best upcoming overlapping free slots (next 14 days)
+          items: { $ref: "#/components/schemas/TimeSlot" }
+        score: { $ref: "#/components/schemas/ScoreBreakdown" }
+    SwipeRequest:
+      type: object
+      required: [targetKind, targetId, subjectId, direction]
+      properties:
+        targetKind: { type: string, enum: [user, group] }
+        targetId: { type: string, format: uuid }
+        subjectId: { type: string, format: uuid }
+        direction: { type: string, enum: [LIKE, PASS] }
+    SwipeResult:
+      type: object
+      required: [recorded]
+      properties:
+        recorded: { type: boolean }
+        match: { oneOf: [{ $ref: "#/components/schemas/Match" }, { type: "null" }] }
+    Match:
+      type: object
+      required: [id, subject, createdAt, groupId]
+      properties:
+        id: { type: string, format: uuid }
+        subject: { $ref: "#/components/schemas/Subject" }
+        otherUser: { $ref: "#/components/schemas/PublicUser" }
+        groupId:
+          type: string
+          format: uuid
+          description: A mutual match always creates (or joins) a group.
+        createdAt: { type: string, format: date-time }
+
+    # groups
+    GroupSummary:
+      type: object
+      required: [id, name, subject, memberCount, maxSize]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        subject: { $ref: "#/components/schemas/Subject" }
+        memberCount: { type: integer }
+        maxSize: { type: integer }
+        nextSessionAt: { type: [string, "null"], format: date-time }
+    GroupMember:
+      type: object
+      required: [user, role, joinedAt]
+      properties:
+        user: { $ref: "#/components/schemas/PublicUser" }
+        role: { $ref: "#/components/schemas/RoleTag" }
+        isOwner: { type: boolean }
+        joinedAt: { type: string, format: date-time }
+    Group:
+      allOf:
+        - $ref: "#/components/schemas/GroupSummary"
+        - type: object
+          required: [members, isOpen]
+          properties:
+            description: { type: [string, "null"] }
+            isOpen: { type: boolean, description: "Appears in other users' candidate decks" }
+            members: { type: array, items: { $ref: "#/components/schemas/GroupMember" } }
+    CreateGroupRequest:
+      type: object
+      required: [name, subjectId, maxSize]
+      properties:
+        name: { type: string, minLength: 3, maxLength: 60 }
+        subjectId: { type: string, format: uuid }
+        maxSize: { type: integer, minimum: 2, maximum: 10 }
+        description: { type: string, maxLength: 300 }
+        isOpen: { type: boolean, default: true }
+    SuggestedSlot:
+      allOf:
+        - $ref: "#/components/schemas/TimeSlot"
+        - type: object
+          required: [availableMemberIds, score]
+          properties:
+            availableMemberIds: { type: array, items: { type: string, format: uuid } }
+            score: { type: number }
+    StudySession:
+      type: object
+      required: [id, groupId, start, end, status]
+      properties:
+        id: { type: string, format: uuid }
+        groupId: { type: string, format: uuid }
+        start: { type: string, format: date-time }
+        end: { type: string, format: date-time }
+        location: { oneOf: [{ $ref: "#/components/schemas/Location" }, { type: "null" }] }
+        onlineUrl: { type: [string, "null"], format: uri }
+        bookingId: { type: [string, "null"], format: uuid }
+        status: { type: string, enum: [PLANNED, CANCELLED, DONE] }
+    CreateSessionRequest:
+      type: object
+      required: [start, end]
+      properties:
+        start: { type: string, format: date-time }
+        end: { type: string, format: date-time }
+        locationId: { type: string, format: uuid }
+        onlineUrl: { type: string, format: uri }
+        bookingId: { type: string, format: uuid }
+
+    # rooms
+    Room:
+      type: object
+      required: [id, locationId, name, capacity, provider]
+      properties:
+        id: { type: string, format: uuid }
+        locationId: { type: string, format: uuid }
+        name: { type: string }
+        capacity: { type: integer }
+        equipment: { type: array, items: { type: string }, example: [whiteboard, projector] }
+        provider: { type: string, enum: [MOCK, LIBCAL, MS_GRAPH], description: "Booking backend" }
+    CreateBookingRequest:
+      type: object
+      required: [roomId, groupId, start, end]
+      properties:
+        roomId: { type: string, format: uuid }
+        groupId: { type: string, format: uuid }
+        start: { type: string, format: date-time }
+        end: { type: string, format: date-time }
+    Booking:
+      type: object
+      required: [id, room, groupId, start, end, status]
+      properties:
+        id: { type: string, format: uuid }
+        room: { $ref: "#/components/schemas/Room" }
+        groupId: { type: string, format: uuid }
+        start: { type: string, format: date-time }
+        end: { type: string, format: date-time }
+        status: { type: string, enum: [PENDING, CONFIRMED, CANCELLED, FAILED] }
+        externalRef: { type: [string, "null"] }

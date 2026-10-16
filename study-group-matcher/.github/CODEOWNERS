@@ -1,0 +1,11 @@
+# Mirrors AGENTS.md §2. Replace @handles with your GitHub usernames.
+# Human approval on these is what gates every merge to main.
+*                                             @lead-human
+/apps/web/                                    @human-laptop-a
+/apps/api/                                    @human-laptop-b
+/packages/integrations/                       @human-laptop-c
+/apps/api/src/modules/integrations/           @human-laptop-c
+/apps/api/prisma/schema/integrations.prisma   @human-laptop-c
+/contracts/                                   @lead-human @human-laptop-a @human-laptop-b @human-laptop-c
+/packages/contracts/                          @lead-human
+/AGENTS.md                                    @lead-human

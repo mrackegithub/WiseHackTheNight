@@ -1,0 +1,117 @@
+// OWNER: Agent C (integrations). Agent B must NOT edit this file.
+// Back-relations on User / Group / StudySession are pre-declared in core.prisma.
+
+enum EventSource {
+  NEPTUN
+  MANUAL
+  STUDY_SESSION
+}
+
+enum SyncStatus {
+  NOT_CONNECTED
+  OK
+  SYNCING
+  ERROR
+}
+
+enum LocationType {
+  LIBRARY
+  CAMPUS_ROOM
+  CAFE
+  COWORKING
+  OTHER
+}
+
+enum BookingProvider {
+  MOCK
+  LIBCAL
+  MS_GRAPH
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  FAILED
+}
+
+model NeptunConnection {
+  userId          String     @id @db.Uuid
+  icsUrlEncrypted String?    // AES-256-GCM, key = ICS_ENCRYPTION_KEY
+  status          SyncStatus @default(NOT_CONNECTED)
+  lastSyncedAt    DateTime?
+  lastError       String?
+  user            User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model CalendarEvent {
+  id          String      @id @default(uuid()) @db.Uuid
+  userId      String      @db.Uuid
+  externalUid String?     // iCal UID, for idempotent re-sync
+  title       String
+  start       DateTime
+  end         DateTime
+  room        String?
+  subjectCode String?
+  source      EventSource
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, source, externalUid])
+  @@index([userId, start, end])
+}
+
+model AvailabilityWindow {
+  id        String @id @default(uuid()) @db.Uuid
+  userId    String @db.Uuid
+  weekday   Int    // 1..7, ISO
+  startTime String // "HH:mm" Europe/Budapest
+  endTime   String
+  user      User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Location {
+  id           String       @id @default(uuid()) @db.Uuid
+  name         String
+  type         LocationType
+  address      String?
+  lat          Float
+  lng          Float
+  openingHours String?
+  osmId        String?      @unique
+  rooms        Room[]
+  sessions     StudySession[]
+
+  @@index([lat, lng])
+}
+
+model Room {
+  id          String          @id @default(uuid()) @db.Uuid
+  locationId  String          @db.Uuid
+  name        String
+  capacity    Int
+  equipment   String[]
+  provider    BookingProvider @default(MOCK)
+  externalId  String?
+  location    Location        @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  bookings    Booking[]
+}
+
+model Booking {
+  id          String        @id @default(uuid()) @db.Uuid
+  roomId      String        @db.Uuid
+  groupId     String        @db.Uuid
+  bookedById  String        @db.Uuid
+  start       DateTime
+  end         DateTime
+  status      BookingStatus @default(PENDING)
+  externalRef String?
+  createdAt   DateTime      @default(now())
+  room        Room          @relation(fields: [roomId], references: [id])
+  group       Group         @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  bookedBy    User          @relation(fields: [bookedById], references: [id])
+  session     StudySession?
+
+  @@index([roomId, start, end])
+}

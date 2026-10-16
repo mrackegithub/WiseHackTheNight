@@ -1,0 +1,23 @@
+name: ci
+on:
+  pull_request:
+    branches: [main]
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Ownership
+        run: bash scripts/check-ownership.sh origin/main
+      - run: pnpm -r install
+      - name: Contract is valid and generated types are fresh
+        run: |
+          pnpm contract:lint
+          pnpm contract:gen
+          git diff --exit-code packages/contracts/src/generated.ts
+      - run: pnpm typecheck
+      - run: pnpm test
