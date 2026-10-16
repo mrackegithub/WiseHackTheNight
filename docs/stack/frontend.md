@@ -13,6 +13,8 @@ Agent A appends a row in the **same commit** that changes a package.json, env va
 | leaflet | ^1.9.4 | prod | maps (OSM tiles from `VITE_MAP_TILE_URL`); lazy-loaded chunk with its CSS | fe/A3-onboarding-location |
 | react-leaflet | ^4.2.1 | prod | React bindings for Leaflet. **Stay on 4.x**: 5.x requires React 19 | fe/A3-onboarding-location |
 | @types/leaflet | ^1.9.22 | dev | Leaflet types | fe/A3-onboarding-location |
+| luxon | ^3.7.2 | prod | Europe/Budapest week/time math in the calendar (ARCHITECTURE §5: UTC on the wire, Budapest in the UI); DST-safe | fe/A4-calendar-week-view |
+| @types/luxon | ^3.7.6 | dev | luxon types | fe/A4-calendar-week-view |
 | vite | ^8.3.4 | dev | dev server (port 5173) and bundler | chore/phase-0 |
 | @vitejs/plugin-react | ^6.1.2 | dev | React JSX / fast refresh for Vite | chore/phase-0 |
 | tailwindcss | ^4.3.3 | dev | utility CSS (v4: `@import 'tailwindcss'` in `src/index.css`, no tailwind.config) | chore/phase-0 |

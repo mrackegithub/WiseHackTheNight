@@ -1,7 +1,10 @@
 import { Link, NavLink, Outlet } from 'react-router';
 import { useAuth } from '../features/auth/auth-context';
 
-const navItems = [{ to: '/', label: 'Home' }];
+const navItems = [
+  { to: '/', label: 'Home' },
+  { to: '/calendar', label: 'Calendar' },
+];
 
 export function Layout() {
   const { isAuthenticated, me, logout } = useAuth();

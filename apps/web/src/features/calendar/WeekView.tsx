@@ -1,0 +1,108 @@
+import type { DateTime } from 'luxon';
+import type { Schemas } from '@sgm/contracts';
+import { formatTimeRange, inZone, nowInZone } from '../../lib/time';
+
+const START_HOUR = 7;
+const END_HOUR = 21;
+const HOUR_PX = 44;
+const HEIGHT = (END_HOUR - START_HOUR) * HOUR_PX;
+
+interface Block {
+  key: string;
+  top: number;
+  height: number;
+  start: string;
+  end: string;
+}
+
+/** Clips [start, end) to the visible hours of `day` and converts to pixel offsets. */
+function place(day: DateTime, start: string, end: string, key: string): Block | null {
+  const visibleStart = day.set({ hour: START_HOUR });
+  const visibleEnd = day.set({ hour: END_HOUR });
+  const s = inZone(start) < visibleStart ? visibleStart : inZone(start);
+  const e = inZone(end) > visibleEnd ? visibleEnd : inZone(end);
+  if (e <= s) return null;
+  const minutesFromTop = s.diff(visibleStart, 'minutes').minutes;
+  return { key, top: (minutesFromTop / 60) * HOUR_PX, height: (e.diff(s, 'minutes').minutes / 60) * HOUR_PX, start, end };
+}
+
+interface WeekViewProps {
+  weekStart: DateTime;
+  events: Schemas['CalendarEvent'][];
+  freeSlots: Schemas['TimeSlot'][];
+}
+
+export function WeekView({ weekStart, events, freeSlots }: WeekViewProps) {
+  const days = Array.from({ length: 7 }, (_, i) => weekStart.plus({ days: i }));
+  const today = nowInZone().startOf('day');
+  const hours = Array.from({ length: END_HOUR - START_HOUR }, (_, i) => START_HOUR + i);
+
+  return (
+    <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+      <div className="min-w-[720px]">
+        <div className="grid grid-cols-[3rem_repeat(7,1fr)] border-b border-slate-200 text-center text-xs">
+          <span />
+          {days.map((d) => (
+            <div key={d.toISODate()} className={`py-2 ${d.hasSame(today, 'day') ? 'font-semibold text-indigo-700' : 'text-slate-600'}`}>
+              {d.toFormat('ccc')} <span className="block text-base">{d.toFormat('d')}</span>
+            </div>
+          ))}
+        </div>
+        <div className="grid grid-cols-[3rem_repeat(7,1fr)]">
+          <div className="relative" style={{ height: HEIGHT }} aria-hidden>
+            {hours.map((h) => (
+              <span key={h} className="absolute right-1 -translate-y-1/2 text-[10px] text-slate-400" style={{ top: (h - START_HOUR) * HOUR_PX }}>
+                {String(h).padStart(2, '0')}:00
+              </span>
+            ))}
+          </div>
+          {days.map((day) => {
+            const slotBlocks = freeSlots.map((s, i) => place(day, s.start, s.end, `slot-${i}`)).filter((b): b is Block => b !== null);
+            const eventBlocks = events
+              .map((ev) => ({ ev, block: place(day, ev.start, ev.end, ev.id) }))
+              .filter((x): x is { ev: Schemas['CalendarEvent']; block: Block } => x.block !== null);
+            return (
+              <section
+                key={day.toISODate()}
+                aria-label={day.toFormat('cccc d LLLL')}
+                className="relative border-l border-slate-100"
+                style={{
+                  height: HEIGHT,
+                  backgroundImage: `repeating-linear-gradient(to bottom, transparent 0, transparent ${HOUR_PX - 1}px, rgb(241 245 249) ${HOUR_PX - 1}px, rgb(241 245 249) ${HOUR_PX}px)`,
+                }}
+              >
+                <ul>
+                  {slotBlocks.map((b) => (
+                    <li
+                      key={b.key}
+                      aria-label={`Free ${formatTimeRange(b.start, b.end)}`}
+                      className="absolute inset-x-0.5 rounded bg-emerald-100/70 px-1 text-[10px] text-emerald-800"
+                      style={{ top: b.top, height: b.height }}
+                    >
+                      {b.height >= 22 && 'Free'}
+                    </li>
+                  ))}
+                  {eventBlocks.map(({ ev, block: b }) => (
+                    <li
+                      key={b.key}
+                      aria-label={`${ev.title}, ${formatTimeRange(ev.start, ev.end)}${ev.room ? `, ${ev.room}` : ''}`}
+                      title={`${ev.title}\n${formatTimeRange(ev.start, ev.end)}${ev.room ? `\n${ev.room}` : ''}`}
+                      className={`absolute inset-x-1 overflow-hidden rounded-md px-1.5 py-1 text-[11px] leading-tight shadow-sm ${
+                        ev.source === 'STUDY_SESSION' ? 'bg-amber-500 text-white' : 'bg-indigo-600 text-white'
+                      }`}
+                      style={{ top: b.top, height: b.height }}
+                    >
+                      <span className="block font-medium">{ev.title}</span>
+                      {b.height >= 40 && <span className="block opacity-80">{formatTimeRange(ev.start, ev.end)}</span>}
+                      {b.height >= 56 && ev.room && <span className="block truncate opacity-80">{ev.room}</span>}
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
