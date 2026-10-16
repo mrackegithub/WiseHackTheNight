@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { useMutation } from '@tanstack/react-query';
-import { Link, useLocation, useNavigate } from 'react-router';
+import { Link } from 'react-router';
 import type { Schemas } from '@sgm/contracts';
 import { api } from '../api/client';
 import { ApiError, unwrap } from '../api/errors';
@@ -15,20 +15,13 @@ import { messageForError } from '../lib/error-messages';
 
 export function LoginPage() {
   const { login } = useAuth();
-  const navigate = useNavigate();
-  const location = useLocation();
-  const from = (location.state as { from?: string } | null)?.from ?? '/';
-
   const [values, setValues] = useState({ email: '', password: '' });
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
 
   const mutation = useMutation({
     mutationFn: (body: Schemas['LoginRequest']) => unwrap(api.POST('/auth/login', { body })),
     meta: { silent: true },
-    onSuccess: (tokens) => {
-      login(tokens);
-      navigate(from, { replace: true });
-    },
+    onSuccess: login, // GuestOnly then redirects to where the user was headed
   });
 
   const formError =

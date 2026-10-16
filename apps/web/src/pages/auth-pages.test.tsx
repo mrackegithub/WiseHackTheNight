@@ -72,11 +72,13 @@ describe('RegisterPage', () => {
     await user.click(screen.getByRole('button', { name: 'Create account' }));
   }
 
-  it('creates an account and signs the user in', async () => {
-    renderApp('/register');
+  it('creates an account, signs the user in and starts onboarding', async () => {
+    const { router } = renderApp('/register');
     await fillAndSubmit('Anna Kovács', 'anna@example.com', 'supersecret');
 
-    expect(await screen.findByRole('heading', { name: 'Welcome, Anna Kovács!' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Set up your profile' })).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe('/onboarding');
+    expect(tokenStore.get()).not.toBeNull();
     expect(findUserByEmail('anna@example.com')?.me.onboardingComplete).toBe(false);
   });
 

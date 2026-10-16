@@ -1,4 +1,5 @@
 import type { Schemas } from '@sgm/contracts';
+import { subjectById } from './data/subjects';
 
 /**
  * In-memory "backend" for MSW. Shapes come from the contract (`Schemas[...]`), so a contract
@@ -7,28 +8,49 @@ import type { Schemas } from '@sgm/contracts';
 export interface MockUser {
   me: Schemas['Me'];
   password: string;
+  subjects: Schemas['UserSubject'][];
 }
 
 export const DEMO_USER_ID = '00000000-0000-4000-8000-000000000001';
 export const DEMO_EMAIL = 'demo@sgm.local';
 export const DEMO_PASSWORD = 'password123';
 
+/** Bump when the shape below changes, so stale browser-saved mock data is discarded instead of crashing. */
+const DB_VERSION = 2;
+
+const userSubject = (subjectId: string, role: Schemas['RoleTag'], confidence = 3): Schemas['UserSubject'] => ({
+  subject: subjectById(subjectId)!,
+  role,
+  confidence,
+});
+
+export function newMockUser(me: Schemas['Me'], password: string): MockUser {
+  return { me, password, subjects: [] };
+}
+
 function seed() {
   const demo: MockUser = {
-    password: DEMO_PASSWORD,
-    me: {
-      id: DEMO_USER_ID,
-      email: DEMO_EMAIL,
-      displayName: 'Demo Student',
-      bio: 'Second-year CS student, happy to explain recursion.',
-      avatarUrl: null,
-      university: 'ELTE',
-      faculty: 'Faculty of Informatics',
-      location: { lat: 47.473, lng: 19.062, label: 'Lágymányos' },
-      interests: [],
-      onboardingComplete: true,
-      createdAt: '2026-09-01T08:00:00Z',
-    },
+    ...newMockUser(
+      {
+        id: DEMO_USER_ID,
+        email: DEMO_EMAIL,
+        displayName: 'Demo Student',
+        bio: 'Second-year CS student, happy to explain recursion.',
+        avatarUrl: null,
+        university: 'ELTE',
+        faculty: 'Faculty of Informatics',
+        location: { lat: 47.473, lng: 19.062, label: 'Lágymányos' },
+        interests: [],
+        onboardingComplete: true,
+        createdAt: '2026-09-01T08:00:00Z',
+      },
+      DEMO_PASSWORD,
+    ),
+    subjects: [
+      userSubject('00000000-0000-4000-8001-000000000001', 'CAN_EXPLAIN', 4),
+      userSubject('00000000-0000-4000-8001-000000000016', 'NEEDS_HELP', 2),
+      userSubject('00000000-0000-4000-8001-000000000009', 'PEER'),
+    ],
   };
 
   return {
@@ -77,7 +99,7 @@ const reviver = (_key: string, value: unknown) =>
 
 export function saveDb() {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ db, tokenCounter, idCounter }, replacer));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ version: DB_VERSION, db, tokenCounter, idCounter }, replacer));
   } catch {
     // storage full or unavailable: mocks just won't survive a reload
   }
@@ -87,9 +109,9 @@ export function loadDb() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return;
-    const saved = JSON.parse(raw, reviver) as { db: Partial<ReturnType<typeof seed>>; tokenCounter: number; idCounter: number };
-    // Merge onto a fresh seed so collections added by newer code still get their seed data.
-    db = { ...seed(), ...saved.db };
+    const saved = JSON.parse(raw, reviver) as { version?: number; db: ReturnType<typeof seed>; tokenCounter: number; idCounter: number };
+    if (saved.version !== DB_VERSION) return; // older shape: start from the seed
+    db = saved.db;
     tokenCounter = saved.tokenCounter;
     idCounter = saved.idCounter;
   } catch {

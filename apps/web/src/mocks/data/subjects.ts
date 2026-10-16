@@ -1,0 +1,53 @@
+import type { Schemas } from '@sgm/contracts';
+
+const raw: [code: string, name: string, credits: number][] = [
+  ['IP-18AA1E', 'Algorithms and Data Structures I', 5],
+  ['IP-18AA2E', 'Algorithms and Data Structures II', 5],
+  ['IP-18PROGEG', 'Programming', 6],
+  ['IP-18OEPROGEG', 'Object-Oriented Programming', 6],
+  ['IP-18FPEG', 'Functional Programming', 4],
+  ['IP-18KVSZEG', 'Computer Systems', 5],
+  ['IP-18OPREG', 'Operating Systems', 4],
+  ['IP-18SZTEG', 'Software Technology', 5],
+  ['IP-18AB1E', 'Databases I', 5],
+  ['IP-18AB2E', 'Databases II', 5],
+  ['IP-18HALOEG', 'Computer Networks', 4],
+  ['IP-18WF1EG', 'Web Development', 4],
+  ['IP-18WF2EG', 'Web Programming', 4],
+  ['IP-18MIEG', 'Artificial Intelligence', 4],
+  ['IP-18NUMEG', 'Numerical Methods', 4],
+  ['IP-18ANA1E', 'Analysis I', 6],
+  ['IP-18ANA2E', 'Analysis II', 6],
+  ['IP-18DM1E', 'Discrete Mathematics I', 5],
+  ['IP-18DM2E', 'Discrete Mathematics II', 5],
+  ['IP-18LINEG', 'Linear Algebra', 5],
+  ['IP-18VSZEG', 'Probability and Statistics', 5],
+  ['IP-18LOGEG', 'Logic in Computer Science', 4],
+  ['IP-18FORMEG', 'Formal Languages and Automata', 4],
+  ['IP-18SZAMEG', 'Theory of Computation', 4],
+  ['IP-18KRIPEG', 'Cryptography', 4],
+  ['IP-18GRAFEG', 'Computer Graphics', 4],
+  ['IP-18PARHEG', 'Parallel Programming', 4],
+  ['IP-18CSPEG', 'Concurrent Programming', 4],
+  ['IP-18FORDEG', 'Compilers', 5],
+  ['IP-18ELMEG', 'Elements of Machine Learning', 4],
+  ['IP-18DATSEG', 'Data Science Fundamentals', 4],
+  ['IP-18MOBEG', 'Mobile Application Development', 4],
+  ['IP-18PROJEG', 'Project Tools', 3],
+  ['IP-18INFBEG', 'Information Security', 4],
+  ['IP-18EAFEG', 'Event-Driven Applications', 4],
+  ['IP-18CPPEG', 'Programming Languages: C++', 4],
+  ['IP-18JAVEG', 'Programming Languages: Java', 4],
+  ['IP-18PYEG', 'Programming Languages: Python', 3],
+  ['IP-18TERVEG', 'Software Design Patterns', 4],
+  ['IP-18SZDEG', 'Thesis Seminar', 3],
+];
+
+export const subjects: Schemas['Subject'][] = raw.map(([code, name, credits], i) => ({
+  id: `00000000-0000-4000-8001-${String(i + 1).padStart(12, '0')}`,
+  code,
+  name,
+  credits,
+}));
+
+export const subjectById = (id: string) => subjects.find((s) => s.id === id);
