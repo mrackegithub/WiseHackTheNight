@@ -14,10 +14,23 @@ import { toast } from '../../lib/toast';
 import { calendarKeys } from '../calendar/queries';
 import { groupKeys, useSuggestedLocations } from '../groups/queries';
 import { useMyPreferences } from '../profile/queries';
+import { RoomPicker } from './RoomPicker';
 import { addMinutes, defaultDuration, durationOptions, startOptions } from './time-options';
 
 type Place = { kind: 'location'; location: Schemas['Location'] } | { kind: 'online' } | { kind: 'later' };
-type Step = 'when' | 'where' | 'confirm';
+type Step = 'when' | 'where' | 'room' | 'confirm';
+
+const stepLabels: Record<Step, string> = { when: 'When', where: 'Where', room: 'Room', confirm: 'Confirm' };
+
+/** Which call failed, so the dialog can send the user back to the right step. */
+class ScheduleError extends Error {
+  constructor(
+    readonly phase: 'booking' | 'session',
+    readonly cause: unknown,
+  ) {
+    super(cause instanceof Error ? cause.message : 'Scheduling failed');
+  }
+}
 
 interface Props {
   group: Schemas['Group'];
@@ -39,25 +52,66 @@ export function ScheduleSessionModal({ group, slot, onClose }: Props) {
   const [duration, setDuration] = useState(() => defaultDuration(durationOptions(slot.end, starts[0]), preferred));
   const [place, setPlace] = useState<Place>({ kind: 'later' });
   const [onlineUrl, setOnlineUrl] = useState('');
+  const [room, setRoom] = useState<Schemas['Room'] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const end = addMinutes(start, duration);
+  const bookable = place.kind === 'location' && place.location.bookable;
+  const steps: Step[] = bookable ? ['when', 'where', 'room', 'confirm'] : ['when', 'where', 'confirm'];
 
-  const create = useMutation({
-    mutationFn: (body: Schemas['CreateSessionRequest']) => unwrap(api.POST('/groups/{groupId}/sessions', { params: { path: { groupId: group.id } }, body })),
+  /** Books the room (if any), then creates the session; cancels the booking again if the session fails. */
+  const schedule = useMutation({
+    mutationFn: async () => {
+      let booking: Schemas['Booking'] | null = null;
+      if (room) {
+        try {
+          booking = await unwrap(api.POST('/bookings', { body: { roomId: room.id, groupId: group.id, start, end } }));
+        } catch (err) {
+          throw new ScheduleError('booking', err);
+        }
+      }
+      try {
+        return await unwrap(
+          api.POST('/groups/{groupId}/sessions', {
+            params: { path: { groupId: group.id } },
+            body: {
+              start,
+              end,
+              ...(place.kind === 'location' ? { locationId: place.location.id } : {}),
+              ...(place.kind === 'online' ? { onlineUrl: onlineUrl.trim() } : {}),
+              ...(booking ? { bookingId: booking.id } : {}),
+            },
+          }),
+        );
+      } catch (err) {
+        if (booking) await api.DELETE('/bookings/{bookingId}', { params: { path: { bookingId: booking.id } } }).catch(() => undefined);
+        throw new ScheduleError('session', err);
+      }
+    },
     meta: { silent: true },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: groupKeys.all });
       void queryClient.invalidateQueries({ queryKey: calendarKeys.all });
-      toast.success(`Session scheduled for ${formatSlot(start, end)}.`);
+      toast.success(`Session scheduled for ${formatSlot(start, end)}${room ? ` in ${room.name}` : ''}.`);
       onClose();
     },
-    onError: (err) =>
-      setError(err instanceof ApiError && err.status === 409 ? 'Someone in the group is busy at that time. Pick another time.' : messageForError(err)),
+    onError: (err) => {
+      const { phase, cause } = err as ScheduleError;
+      if (phase === 'booking') {
+        // e.g. SLOT_TAKEN: someone else just booked it; show fresh rooms
+        void queryClient.invalidateQueries({ queryKey: ['rooms'] });
+        setRoom(null);
+        setStep('room');
+        setError(messageForError(cause));
+      } else {
+        setError(cause instanceof ApiError && cause.status === 409 ? 'Someone in the group is busy at that time. Pick another time.' : messageForError(cause));
+      }
+    },
   });
 
   function changeStart(next: string) {
     setStart(next);
+    setRoom(null); // availability depends on the time
     const fits = durationOptions(slot.end, next);
     if (!fits.includes(duration)) setDuration(defaultDuration(fits, preferred));
   }
@@ -65,17 +119,17 @@ export function ScheduleSessionModal({ group, slot, onClose }: Props) {
   function nextFromWhere() {
     if (place.kind === 'online' && !URL_RE.test(onlineUrl.trim())) return setError('Paste the meeting link (https://…).');
     setError(null);
-    setStep('confirm');
+    setStep(bookable ? 'room' : 'confirm');
+  }
+
+  function choosePlace(next: Place) {
+    setPlace(next);
+    setRoom(null);
   }
 
   function submit() {
     setError(null);
-    create.mutate({
-      start,
-      end,
-      ...(place.kind === 'location' ? { locationId: place.location.id } : {}),
-      ...(place.kind === 'online' ? { onlineUrl: onlineUrl.trim() } : {}),
-    });
+    schedule.mutate();
   }
 
   const whereText = place.kind === 'location' ? place.location.name : place.kind === 'online' ? 'Online' : 'Not decided yet';
@@ -83,9 +137,9 @@ export function ScheduleSessionModal({ group, slot, onClose }: Props) {
   return (
     <Modal title="Schedule a session" onClose={onClose} size="md" description={`${group.name} · ${group.subject.name}`}>
       <ol className="mb-4 flex gap-2 text-xs" aria-label="Steps">
-        {(['when', 'where', 'confirm'] as const).map((s, i) => (
+        {steps.map((s, i) => (
           <li key={s} aria-current={s === step ? 'step' : undefined} className={`flex-1 border-t-4 pt-1 ${s === step ? 'border-indigo-600 font-medium text-indigo-700' : 'border-slate-200 text-slate-500'}`}>
-            {i + 1}. {s === 'when' ? 'When' : s === 'where' ? 'Where' : 'Confirm'}
+            {i + 1}. {stepLabels[s]}
           </li>
         ))}
       </ol>
@@ -141,7 +195,7 @@ export function ScheduleSessionModal({ group, slot, onClose }: Props) {
                 name="place"
                 className="mt-1 accent-indigo-600"
                 checked={place.kind === 'location' && place.location.id === s.location.id}
-                onChange={() => setPlace({ kind: 'location', location: s.location })}
+                onChange={() => choosePlace({ kind: 'location', location: s.location })}
               />
               <span className="text-sm">
                 <span className="font-medium">{s.location.name}</span>
@@ -153,7 +207,7 @@ export function ScheduleSessionModal({ group, slot, onClose }: Props) {
             </label>
           ))}
           <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-slate-200 px-3 py-2 has-checked:border-indigo-500 has-checked:bg-indigo-50">
-            <input type="radio" name="place" className="mt-1 accent-indigo-600" checked={place.kind === 'online'} onChange={() => setPlace({ kind: 'online' })} />
+            <input type="radio" name="place" className="mt-1 accent-indigo-600" checked={place.kind === 'online'} onChange={() => choosePlace({ kind: 'online' })} />
             <span className="flex-1 text-sm">
               <span className="font-medium">Online</span>
               {place.kind === 'online' && (
@@ -169,7 +223,7 @@ export function ScheduleSessionModal({ group, slot, onClose }: Props) {
             </span>
           </label>
           <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-slate-200 px-3 py-2 has-checked:border-indigo-500 has-checked:bg-indigo-50">
-            <input type="radio" name="place" className="mt-1 accent-indigo-600" checked={place.kind === 'later'} onChange={() => setPlace({ kind: 'later' })} />
+            <input type="radio" name="place" className="mt-1 accent-indigo-600" checked={place.kind === 'later'} onChange={() => choosePlace({ kind: 'later' })} />
             <span className="text-sm font-medium">Decide later</span>
           </label>
           <div className="mt-2 flex justify-between gap-2">
@@ -181,6 +235,25 @@ export function ScheduleSessionModal({ group, slot, onClose }: Props) {
         </fieldset>
       )}
 
+      {step === 'room' && place.kind === 'location' && (
+        <div className="flex flex-col gap-4">
+          <RoomPicker locationId={place.location.id} start={start} end={end} capacity={group.memberCount} value={room} onChange={setRoom} />
+          <div className="flex justify-between gap-2">
+            <Button variant="secondary" onClick={() => setStep('where')}>
+              Back
+            </Button>
+            <Button
+              onClick={() => {
+                setError(null);
+                setStep('confirm');
+              }}
+            >
+              Next
+            </Button>
+          </div>
+        </div>
+      )}
+
       {step === 'confirm' && (
         <div className="flex flex-col gap-4">
           <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
@@ -188,12 +261,18 @@ export function ScheduleSessionModal({ group, slot, onClose }: Props) {
             <dd className="font-medium">{formatSlot(start, end)}</dd>
             <dt className="text-slate-500">Where</dt>
             <dd className="font-medium">{whereText}</dd>
+            {bookable && (
+              <>
+                <dt className="text-slate-500">Room</dt>
+                <dd className="font-medium">{room ? `${room.name} (will be booked)` : 'No booking'}</dd>
+              </>
+            )}
           </dl>
           <div className="flex justify-between gap-2">
-            <Button variant="secondary" onClick={() => setStep('where')}>
+            <Button variant="secondary" onClick={() => setStep(bookable ? 'room' : 'where')}>
               Back
             </Button>
-            <Button onClick={submit} loading={create.isPending}>
+            <Button onClick={submit} loading={schedule.isPending}>
               Schedule session
             </Button>
           </div>
