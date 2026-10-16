@@ -1,6 +1,8 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router';
 import { meQueryKey } from '../features/auth/auth-context';
+import { InterestsStep } from '../features/onboarding/steps/InterestsStep';
+import { PreferencesStep } from '../features/onboarding/steps/PreferencesStep';
 import { ProfileStep } from '../features/onboarding/steps/ProfileStep';
 import { SubjectsStep } from '../features/onboarding/steps/SubjectsStep';
 import type { StepProps } from '../features/onboarding/steps/types';
@@ -9,6 +11,8 @@ import { toast } from '../lib/toast';
 const steps: { id: string; label: string; Component: (props: StepProps) => React.ReactNode }[] = [
   { id: 'profile', label: 'Profile', Component: ProfileStep },
   { id: 'subjects', label: 'Subjects', Component: SubjectsStep },
+  { id: 'interests', label: 'Interests', Component: InterestsStep },
+  { id: 'preferences', label: 'Preferences', Component: PreferencesStep },
 ];
 
 export function OnboardingPage() {

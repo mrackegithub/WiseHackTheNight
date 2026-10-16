@@ -1,4 +1,4 @@
-import { screen, within } from '@testing-library/react';
+import { fireEvent, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import { db, DEMO_USER_ID } from '../mocks/db';
@@ -55,7 +55,7 @@ describe('Onboarding: subjects step', () => {
     await user.selectOptions(screen.getByLabelText('Confidence in Cryptography'), '2');
     await user.click(screen.getByRole('button', { name: 'Continue' }));
 
-    expect(await screen.findByText("You're all set! Start finding study partners.")).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Your interests' })).toBeInTheDocument();
     const saved = demo().subjects.find((s) => s.subject.code === 'IP-18KRIPEG');
     expect(saved).toMatchObject({ role: 'NEEDS_HELP', confidence: 2 });
     expect(demo().subjects).toHaveLength(4);
@@ -80,5 +80,77 @@ describe('Onboarding: subjects step', () => {
     expect(screen.getByText('Selected (2)')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Back' }));
     expect(await screen.findByRole('heading', { name: 'About you' })).toBeInTheDocument();
+  });
+});
+
+describe('Onboarding: interests step', () => {
+  it('toggles interest chips and saves them as interestIds', async () => {
+    const user = userEvent.setup();
+    loginAsDemo();
+    renderApp('/onboarding?step=interests');
+
+    // demo starts with Exam prep, Competitive programming, Whiteboard explaining
+    const examPrep = await screen.findByRole('button', { name: 'Exam prep' });
+    expect(examPrep).toHaveAttribute('aria-pressed', 'true');
+    await user.click(examPrep);
+    await user.click(screen.getByRole('button', { name: 'Hackathons' }));
+    expect(screen.getByText('3/15 selected')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+
+    expect(await screen.findByRole('heading', { name: 'How you like to study' })).toBeInTheDocument();
+    expect((demo().me.interests ?? []).map((i) => i.label).sort()).toEqual(['Competitive programming', 'Hackathons', 'Whiteboard explaining']);
+  });
+
+  it('limits the selection to 15', async () => {
+    const user = userEvent.setup();
+    loginAsDemo();
+    demo().me.interests = [];
+    renderApp('/onboarding?step=interests');
+
+    const chips = within(await screen.findByRole('group', { name: 'Interests' })).getAllByRole('button');
+    for (const chip of chips.slice(0, 16)) await user.click(chip);
+    expect(screen.getByText('15/15 selected')).toBeInTheDocument();
+    expect(chips[15]).toBeDisabled();
+  });
+});
+
+describe('Onboarding: preferences step', () => {
+  it('loads saved preferences, keeps min ≤ max, and saves with PUT /me/preferences', async () => {
+    const user = userEvent.setup();
+    loginAsDemo();
+    const { router } = renderApp('/onboarding?step=preferences');
+
+    const min = await screen.findByLabelText('Smallest group');
+    expect(screen.getByLabelText('Largest group')).toHaveValue('3');
+    // moving "smallest" above "largest" pushes largest up too (jsdom has no slider keyboard support)
+    fireEvent.change(min, { target: { value: '4' } });
+    expect(screen.getByLabelText('Largest group')).toHaveValue('4');
+    expect(screen.getAllByText('4 people')).toHaveLength(2); // both sliders show 4
+
+    await user.click(screen.getByLabelText('Coworking space'));
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+
+    await screen.findByText("You're all set! Start finding study partners.");
+    expect(router.state.location.pathname).toBe('/');
+    expect(demo().preferences).toMatchObject({ groupSizeMin: 4, groupSizeMax: 4, locationTypes: ['LIBRARY', 'CAFE', 'COWORKING'], mode: 'IN_PERSON' });
+  });
+
+  it('hides distance and places when studying online only', async () => {
+    const user = userEvent.setup();
+    loginAsDemo();
+    renderApp('/onboarding?step=preferences');
+
+    expect(await screen.findByLabelText('Max distance from home')).toBeInTheDocument();
+    await user.click(screen.getByRole('radio', { name: 'Online' }));
+    expect(screen.queryByLabelText('Max distance from home')).not.toBeInTheDocument();
+    expect(screen.queryByText('Places you like')).not.toBeInTheDocument();
+  });
+
+  it('shows the defaults for a user who never saved preferences', async () => {
+    loginAsDemo();
+    demo().preferences = null;
+    renderApp('/onboarding?step=preferences');
+    expect(await screen.findByLabelText('Session length')).toHaveValue('90');
+    expect(screen.getByRole('radio', { name: 'Either' })).toBeChecked();
   });
 });
