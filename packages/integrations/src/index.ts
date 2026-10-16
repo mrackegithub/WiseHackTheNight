@@ -18,6 +18,12 @@ export {
 } from './slots/availability';
 export { SimpleGeoService, geoService } from './geo/geo';
 export {
+  NominatimGeocoder,
+  geocoder,
+  type GeoPointResult,
+  type GeocodeOptions,
+} from './geo/geocoding';
+export {
   normalizeCalendarUrl,
   isPrivateIp,
   validateSafeUrl,
