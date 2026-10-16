@@ -64,4 +64,36 @@ describe('contract: matching candidates', () => {
     expect(errors).toEqual([]);
     expect(valid).toBe(true);
   });
+
+  it('POST /matching/swipes 200 matches OpenAPI schema', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/v1/matching/swipes',
+      headers: { authorization: `Bearer ${demoToken}` },
+      payload: {
+        targetKind: 'user',
+        targetId: 'a0000000-0000-4000-a000-000000000001',
+        subjectId: algoSubjectId,
+        direction: 'PASS',
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const { valid, errors } = validateResponse('/matching/swipes', 'post', 200, res.json());
+    expect(errors).toEqual([]);
+    expect(valid).toBe(true);
+  });
+
+  it('GET /matching/matches 200 matches OpenAPI schema', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/v1/matching/matches?limit=10',
+      headers: { authorization: `Bearer ${demoToken}` },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const { valid, errors } = validateResponse('/matching/matches', 'get', 200, res.json());
+    expect(errors).toEqual([]);
+    expect(valid).toBe(true);
+  });
 });

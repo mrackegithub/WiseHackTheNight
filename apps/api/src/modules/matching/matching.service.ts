@@ -1,7 +1,11 @@
 import type { PrismaClient, RoleTag } from '@prisma/client';
-import { notFound } from '../../core/errors.js';
+import { badRequest, conflict, notFound } from '../../core/errors.js';
 import { stubIntersectSlots } from '../../core/stubs/integrations.stub.js';
-import type { GetCandidatesQuery } from './matching.schemas.js';
+import type {
+  GetCandidatesQuery,
+  ListMatchesQuery,
+  SwipeRequest,
+} from './matching.schemas.js';
 import { score } from './score.js';
 
 function haversineDistance(
@@ -335,4 +339,388 @@ export async function getCandidates(
   groupCandidates.sort((a, b) => b.score.total - a.score.total);
 
   return groupCandidates.slice(0, limit);
+}
+
+export async function swipe(
+  prisma: PrismaClient,
+  currentUserId: string,
+  data: SwipeRequest,
+) {
+  const { targetKind, targetId, subjectId, direction } = data;
+
+  if (targetKind === 'user' && targetId === currentUserId) {
+    throw badRequest('Cannot swipe on yourself', 'SELF_SWIPE');
+  }
+
+  // Ensure subject exists
+  const subject = await prisma.subject.findUnique({
+    where: { id: subjectId },
+  });
+  if (!subject) {
+    throw notFound('Subject not found', 'NOT_FOUND');
+  }
+
+  if (direction === 'PASS') {
+    await prisma.swipe.upsert({
+      where: {
+        swiperId_targetKind_targetId_subjectId: {
+          swiperId: currentUserId,
+          targetKind,
+          targetId,
+          subjectId,
+        },
+      },
+      update: { direction: 'PASS', createdAt: new Date() },
+      create: {
+        swiperId: currentUserId,
+        targetKind,
+        targetId,
+        subjectId,
+        direction: 'PASS',
+      },
+    });
+    return { recorded: true, match: null };
+  }
+
+  // direction === 'LIKE'
+  if (targetKind === 'user') {
+    const targetUser = await prisma.user.findUnique({
+      where: { id: targetId },
+    });
+    if (!targetUser) {
+      throw notFound('User not found', 'NOT_FOUND');
+    }
+
+    return prisma.$transaction(async (tx) => {
+      // 1. Record current swipe
+      const currentSwipe = await tx.swipe.upsert({
+        where: {
+          swiperId_targetKind_targetId_subjectId: {
+            swiperId: currentUserId,
+            targetKind: 'user',
+            targetId,
+            subjectId,
+          },
+        },
+        update: { direction: 'LIKE', createdAt: new Date() },
+        create: {
+          swiperId: currentUserId,
+          targetKind: 'user',
+          targetId,
+          subjectId,
+          direction: 'LIKE',
+        },
+      });
+
+      // 2. Check for reverse LIKE
+      const reverseSwipe = await tx.swipe.findFirst({
+        where: {
+          swiperId: targetId,
+          targetKind: 'user',
+          targetId: currentUserId,
+          subjectId,
+          direction: 'LIKE',
+        },
+      });
+
+      if (!reverseSwipe) {
+        return { recorded: true, match: null };
+      }
+
+      // 3. Mutual LIKE! Check if a match already exists between them for this subject
+      const existingMatch = await tx.match.findFirst({
+        where: {
+          subjectId,
+          OR: [
+            { userAId: currentUserId, userBId: targetId },
+            { userAId: targetId, userBId: currentUserId },
+          ],
+        },
+        include: {
+          group: { include: { subject: true } },
+        },
+      });
+
+      if (existingMatch) {
+        return {
+          recorded: true,
+          match: {
+            id: existingMatch.id,
+            subject: {
+              id: existingMatch.group.subject.id,
+              code: existingMatch.group.subject.code,
+              name: existingMatch.group.subject.name,
+              credits: existingMatch.group.subject.credits,
+            },
+            otherUser: {
+              id: targetUser.id,
+              displayName: targetUser.displayName,
+              avatarUrl: targetUser.avatarUrl,
+              faculty: targetUser.faculty,
+              bio: targetUser.bio,
+            },
+            groupId: existingMatch.groupId,
+            createdAt: existingMatch.createdAt.toISOString(),
+          },
+        };
+      }
+
+      // 4. Create Group and Match
+      // Earlier liker is group owner
+      const isTargetEarlier = reverseSwipe.createdAt <= currentSwipe.createdAt;
+      const ownerId = isTargetEarlier ? targetId : currentUserId;
+      const memberId = isTargetEarlier ? currentUserId : targetId;
+
+      const [pref1, pref2] = await Promise.all([
+        tx.preferences.findUnique({ where: { userId: currentUserId } }),
+        tx.preferences.findUnique({ where: { userId: targetId } }),
+      ]);
+      const max1 = pref1?.groupSizeMax ?? 4;
+      const max2 = pref2?.groupSizeMax ?? 4;
+      const maxSize = Math.max(2, Math.min(max1, max2));
+
+      const [currSubj, targetSubj] = await Promise.all([
+        tx.userSubject.findUnique({
+          where: { userId_subjectId: { userId: currentUserId, subjectId } },
+        }),
+        tx.userSubject.findUnique({
+          where: { userId_subjectId: { userId: targetId, subjectId } },
+        }),
+      ]);
+      const currRole: RoleTag = currSubj?.role ?? 'PEER';
+      const targetRole: RoleTag = targetSubj?.role ?? 'PEER';
+
+      const currentUserRecord = await tx.user.findUnique({ where: { id: currentUserId } });
+      const groupName = `${currentUserRecord?.displayName ?? 'Study'} & ${targetUser.displayName} Study Pod`;
+
+      const group = await tx.group.create({
+        data: {
+          name: groupName,
+          description: `Study group for ${subject.name} (${subject.code})`,
+          subjectId,
+          maxSize,
+          isOpen: true,
+          members: {
+            create: [
+              {
+                userId: ownerId,
+                role: ownerId === currentUserId ? currRole : targetRole,
+                isOwner: true,
+              },
+              {
+                userId: memberId,
+                role: memberId === currentUserId ? currRole : targetRole,
+                isOwner: false,
+              },
+            ],
+          },
+        },
+      });
+
+      const match = await tx.match.create({
+        data: {
+          groupId: group.id,
+          subjectId,
+          userAId: ownerId,
+          userBId: memberId,
+        },
+      });
+
+      return {
+        recorded: true,
+        match: {
+          id: match.id,
+          subject: {
+            id: subject.id,
+            code: subject.code,
+            name: subject.name,
+            credits: subject.credits,
+          },
+          otherUser: {
+            id: targetUser.id,
+            displayName: targetUser.displayName,
+            avatarUrl: targetUser.avatarUrl,
+            faculty: targetUser.faculty,
+            bio: targetUser.bio,
+          },
+          groupId: group.id,
+          createdAt: match.createdAt.toISOString(),
+        },
+      };
+    });
+  }
+
+  // targetKind === 'group'
+  return prisma.$transaction(async (tx) => {
+    const group = await tx.group.findUnique({
+      where: { id: targetId },
+      include: {
+        members: true,
+        subject: true,
+      },
+    });
+
+    if (!group) {
+      throw notFound('Group not found', 'NOT_FOUND');
+    }
+    if (group.subjectId !== subjectId) {
+      throw badRequest('Group is for a different subject', 'SUBJECT_MISMATCH');
+    }
+
+    const isMember = group.members.some((m) => m.userId === currentUserId);
+    if (!isMember) {
+      if (group.members.length >= group.maxSize) {
+        throw conflict('Group is full', 'GROUP_FULL');
+      }
+      if (!group.isOpen) {
+        throw conflict('Group is closed', 'GROUP_CLOSED');
+      }
+
+      const userSubj = await tx.userSubject.findUnique({
+        where: { userId_subjectId: { userId: currentUserId, subjectId } },
+      });
+      const role: RoleTag = userSubj?.role ?? 'PEER';
+
+      await tx.groupMember.create({
+        data: {
+          groupId: group.id,
+          userId: currentUserId,
+          role,
+          isOwner: false,
+        },
+      });
+
+      if (group.members.length + 1 >= group.maxSize) {
+        await tx.group.update({
+          where: { id: group.id },
+          data: { isOpen: false },
+        });
+      }
+    }
+
+    await tx.swipe.upsert({
+      where: {
+        swiperId_targetKind_targetId_subjectId: {
+          swiperId: currentUserId,
+          targetKind: 'group',
+          targetId,
+          subjectId,
+        },
+      },
+      update: { direction: 'LIKE', createdAt: new Date() },
+      create: {
+        swiperId: currentUserId,
+        targetKind: 'group',
+        targetId,
+        subjectId,
+        direction: 'LIKE',
+      },
+    });
+
+    let match = await tx.match.findFirst({
+      where: {
+        groupId: group.id,
+        userAId: currentUserId,
+        userBId: null,
+      },
+    });
+
+    if (!match) {
+      match = await tx.match.create({
+        data: {
+          groupId: group.id,
+          subjectId,
+          userAId: currentUserId,
+          userBId: null,
+        },
+      });
+    }
+
+    return {
+      recorded: true,
+      match: {
+        id: match.id,
+        subject: {
+          id: group.subject.id,
+          code: group.subject.code,
+          name: group.subject.name,
+          credits: group.subject.credits,
+        },
+        groupId: group.id,
+        createdAt: match.createdAt.toISOString(),
+      },
+    };
+  });
+}
+
+export async function listMatches(
+  prisma: PrismaClient,
+  currentUserId: string,
+  query: ListMatchesQuery,
+) {
+  const { cursor, limit } = query;
+
+  const matches = await prisma.match.findMany({
+    where: {
+      OR: [{ userAId: currentUserId }, { userBId: currentUserId }],
+    },
+    take: limit + 1,
+    cursor: cursor ? { id: cursor } : undefined,
+    skip: cursor ? 1 : 0,
+    orderBy: { id: 'desc' },
+    include: {
+      group: {
+        include: {
+          subject: true,
+        },
+      },
+    },
+  });
+
+  let nextCursor: string | null = null;
+  if (matches.length > limit) {
+    matches.pop();
+    const lastItem = matches[matches.length - 1];
+    nextCursor = lastItem ? lastItem.id : null;
+  }
+
+  const otherUserIds = matches
+    .map((m) => (m.userAId === currentUserId ? m.userBId : m.userAId))
+    .filter((id): id is string => id !== null);
+
+  const users =
+    otherUserIds.length > 0
+      ? await prisma.user.findMany({
+          where: { id: { in: otherUserIds } },
+          select: {
+            id: true,
+            displayName: true,
+            avatarUrl: true,
+            faculty: true,
+            bio: true,
+          },
+        })
+      : [];
+
+  const userMap = new Map(users.map((u) => [u.id, u]));
+
+  const items = matches.map((m) => {
+    const otherUserId = m.userAId === currentUserId ? m.userBId : m.userAId;
+    const otherUser = otherUserId ? userMap.get(otherUserId) : undefined;
+
+    return {
+      id: m.id,
+      subject: {
+        id: m.group.subject.id,
+        code: m.group.subject.code,
+        name: m.group.subject.name,
+        credits: m.group.subject.credits,
+      },
+      ...(otherUser ? { otherUser } : {}),
+      groupId: m.groupId,
+      createdAt: m.createdAt.toISOString(),
+    };
+  });
+
+  return { items, nextCursor };
 }

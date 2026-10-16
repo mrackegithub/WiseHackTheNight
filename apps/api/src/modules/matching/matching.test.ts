@@ -145,4 +145,196 @@ describe('B6: Matching Candidates Deck', () => {
       expect(first.score.total).toBeGreaterThan(0);
     }
   });
+
+  describe('B7: Swipes & Matches', () => {
+    let testUser2Id: string;
+    let testUser2Token: string;
+
+    beforeAll(async () => {
+      // Create a second test user for testing mutual swipe
+      const uniqueSuffix = Date.now();
+      const regRes = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/register',
+        payload: {
+          email: `b7_partner_${uniqueSuffix}@sgm.local`,
+          password: 'password123',
+          displayName: 'B7 Partner',
+        },
+      });
+      expect(regRes.statusCode).toBe(201);
+      testUser2Token = regRes.json().accessToken;
+      testUser2Id = app.jwt.decode<{ sub: string }>(testUser2Token)!.sub;
+
+      // Add subject to partner user
+      await app.prisma.userSubject.create({
+        data: {
+          userId: testUser2Id,
+          subjectId: algoSubjectId,
+          role: 'CAN_EXPLAIN',
+          confidence: 4,
+        },
+      });
+    });
+
+    it('rejects self-swipe with 400', async () => {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/v1/matching/swipes',
+        headers: { authorization: `Bearer ${demoToken}` },
+        payload: {
+          targetKind: 'user',
+          targetId: demoUserId,
+          subjectId: algoSubjectId,
+          direction: 'LIKE',
+        },
+      });
+      expect(res.statusCode).toBe(400);
+      expect(res.json().code).toBe('SELF_SWIPE');
+    });
+
+    it('records PASS swipe with no match', async () => {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/v1/matching/swipes',
+        headers: { authorization: `Bearer ${demoToken}` },
+        payload: {
+          targetKind: 'user',
+          targetId: testUser2Id,
+          subjectId: algoSubjectId,
+          direction: 'PASS',
+        },
+      });
+      expect(res.statusCode).toBe(200);
+      const body = res.json();
+      expect(body.recorded).toBe(true);
+      expect(body.match).toBeNull();
+    });
+
+    it('creates group and match on mutual LIKE', async () => {
+      // Partner likes demoUser first
+      const partnerSwipe = await app.inject({
+        method: 'POST',
+        url: '/api/v1/matching/swipes',
+        headers: { authorization: `Bearer ${testUser2Token}` },
+        payload: {
+          targetKind: 'user',
+          targetId: demoUserId,
+          subjectId: algoSubjectId,
+          direction: 'LIKE',
+        },
+      });
+      expect(partnerSwipe.statusCode).toBe(200);
+      expect(partnerSwipe.json().recorded).toBe(true);
+      expect(partnerSwipe.json().match).toBeNull();
+
+      // DemoUser now likes partner -> mutual match!
+      const demoSwipe = await app.inject({
+        method: 'POST',
+        url: '/api/v1/matching/swipes',
+        headers: { authorization: `Bearer ${demoToken}` },
+        payload: {
+          targetKind: 'user',
+          targetId: testUser2Id,
+          subjectId: algoSubjectId,
+          direction: 'LIKE',
+        },
+      });
+      expect(demoSwipe.statusCode).toBe(200);
+      const body = demoSwipe.json();
+      expect(body.recorded).toBe(true);
+      expect(body.match).toBeDefined();
+      expect(body.match.id).toBeDefined();
+      expect(body.match.subject.id).toBe(algoSubjectId);
+      expect(body.match.otherUser.id).toBe(testUser2Id);
+      expect(body.match.groupId).toBeDefined();
+
+      // Check group created with partner as owner (partner liked first)
+      const group = await app.prisma.group.findUnique({
+        where: { id: body.match.groupId },
+        include: { members: true },
+      });
+      expect(group).toBeDefined();
+      expect(group!.members).toHaveLength(2);
+      const ownerMember = group!.members.find((m) => m.isOwner);
+      expect(ownerMember?.userId).toBe(testUser2Id);
+    });
+
+    it('joins open group on LIKE and fails with GROUP_FULL when full', async () => {
+      // Create a test group with maxSize: 2
+      const testGroup = await app.prisma.group.create({
+        data: {
+          name: 'Tiny Study Group',
+          subjectId: algoSubjectId,
+          maxSize: 2,
+          isOpen: true,
+          members: {
+            create: [
+              { userId: testUser2Id, role: 'PEER', isOwner: true },
+            ],
+          },
+        },
+      });
+
+      // Demo user likes (joins) the group
+      const joinRes = await app.inject({
+        method: 'POST',
+        url: '/api/v1/matching/swipes',
+        headers: { authorization: `Bearer ${demoToken}` },
+        payload: {
+          targetKind: 'group',
+          targetId: testGroup.id,
+          subjectId: algoSubjectId,
+          direction: 'LIKE',
+        },
+      });
+      expect(joinRes.statusCode).toBe(200);
+      const joinBody = joinRes.json();
+      expect(joinBody.recorded).toBe(true);
+      expect(joinBody.match).toBeDefined();
+      expect(joinBody.match.groupId).toBe(testGroup.id);
+
+      // Now create a 3rd user trying to join the full group
+      const reg3 = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/register',
+        payload: {
+          email: `b7_third_${Date.now()}_${Math.random().toString(36).substring(7)}@sgm.local`,
+          password: 'password123',
+          displayName: 'Third User',
+        },
+      });
+      const user3Token = reg3.json().accessToken;
+
+      const fullRes = await app.inject({
+        method: 'POST',
+        url: '/api/v1/matching/swipes',
+        headers: { authorization: `Bearer ${user3Token}` },
+        payload: {
+          targetKind: 'group',
+          targetId: testGroup.id,
+          subjectId: algoSubjectId,
+          direction: 'LIKE',
+        },
+      });
+      expect(fullRes.statusCode).toBe(409);
+      expect(fullRes.json().code).toBe('GROUP_FULL');
+    });
+
+    it('lists matches with cursor pagination', async () => {
+      const res = await app.inject({
+        method: 'GET',
+        url: '/api/v1/matching/matches?limit=10',
+        headers: { authorization: `Bearer ${demoToken}` },
+      });
+      expect(res.statusCode).toBe(200);
+      const body = res.json();
+      expect(body.items).toBeInstanceOf(Array);
+      expect(body.items.length).toBeGreaterThan(0);
+      const first = body.items[0];
+      expect(first.id).toBeDefined();
+      expect(first.subject).toBeDefined();
+      expect(first.groupId).toBeDefined();
+    });
+  });
 });
