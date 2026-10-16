@@ -15,6 +15,8 @@ export interface MockUser {
   preferences: Schemas['Preferences'] | null;
   calendar: {
     neptun: Schemas['NeptunConnection'];
+    /** The (mock-)encrypted feed URL; null when connected via file upload or not at all. */
+    icsUrl: string | null;
     /** Recurring classes imported from Neptun; expanded per requested range. */
     timetable: TimetableEntry[];
     windows: Schemas['WeeklyWindow'][];
@@ -36,7 +38,7 @@ export const defaultPreferences = (): Schemas['Preferences'] => ({
 });
 
 /** Bump when the shape below changes, so stale browser-saved mock data is discarded instead of crashing. */
-const DB_VERSION = 4;
+const DB_VERSION = 5;
 
 const userSubject = (subjectId: string, role: Schemas['RoleTag'], confidence = 3): Schemas['UserSubject'] => ({
   subject: subjectById(subjectId)!,
@@ -50,7 +52,12 @@ export function newMockUser(me: Schemas['Me'], password: string): MockUser {
     password,
     subjects: [],
     preferences: null,
-    calendar: { neptun: { connected: false, status: 'NOT_CONNECTED', lastSyncedAt: null, lastError: null, eventCount: 0 }, timetable: [], windows: defaultWindows() },
+    calendar: {
+      neptun: { connected: false, status: 'NOT_CONNECTED', lastSyncedAt: null, lastError: null, eventCount: 0 },
+      icsUrl: null,
+      timetable: [],
+      windows: defaultWindows(),
+    },
   };
 }
 
@@ -91,6 +98,7 @@ function seed() {
   };
   demo.calendar = {
     neptun: { connected: true, status: 'OK', lastSyncedAt: '2026-10-15T06:00:00Z', lastError: null, eventCount: 112 },
+    icsUrl: 'webcal://neptun.example.edu/calendar/demo.ics',
     timetable: sampleTimetable,
     windows: defaultWindows(),
   };

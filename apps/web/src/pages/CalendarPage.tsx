@@ -2,6 +2,7 @@ import { DateTime } from 'luxon';
 import { useSearchParams } from 'react-router';
 import { Button } from '../components/form/Button';
 import { Spinner } from '../components/Spinner';
+import { NeptunPanel } from '../features/calendar/NeptunPanel';
 import { useWeekAvailability, useWeekSchedule } from '../features/calendar/queries';
 import { WeekView } from '../features/calendar/WeekView';
 import { formatMinutes } from '../lib/labels';
@@ -41,6 +42,8 @@ export function CalendarPage() {
         </nav>
       </header>
 
+      <NeptunPanel />
+
       <div className="flex gap-4 text-xs text-slate-600" aria-hidden>
         <span className="flex items-center gap-1">
           <span className="h-3 w-3 rounded bg-indigo-600" /> Class
@@ -59,7 +62,7 @@ export function CalendarPage() {
         <>
           <WeekView weekStart={weekStart} events={schedule.data ?? []} freeSlots={availability.data ?? []} />
           {schedule.data?.length === 0 && (
-            <p className="text-sm text-slate-600">No classes this week. Connect your Neptun calendar so we can find times that really work.</p>
+            <p className="text-sm text-slate-600">No classes this week. Connect your Neptun calendar above so we can find times that really work.</p>
           )}
         </>
       )}
