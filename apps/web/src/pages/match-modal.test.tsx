@@ -39,8 +39,8 @@ describe('Match modal', () => {
 
     await user.click(within(dialog).getByRole('link', { name: 'Go to group' }));
 
-    expect(router.state.location.pathname).toBe(`/groups/${demo().matches[0].groupId}`);
     expect(await screen.findByRole('heading', { name: 'Algorithms and Data Structures I study group' })).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe(`/groups/${demo().matches[0].groupId}`);
     const members = within(screen.getByRole('region', { name: /Members \(2\// })).getAllByRole('listitem');
     // textContent = initials + name (+ "organiser") + faculty + role badge
     expect(members.map((m) => m.textContent)).toEqual([

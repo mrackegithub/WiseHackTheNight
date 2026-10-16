@@ -40,6 +40,7 @@ describe('Layout and accessibility', () => {
     await screen.findByRole('heading', { name: 'Welcome, Demo Student!' });
 
     await user.click(screen.getByRole('link', { name: 'Discover' }));
+    await screen.findByRole('heading', { name: 'Discover' }); // lazy route loaded
     expect(screen.getByRole('main')).toHaveFocus();
   });
 
