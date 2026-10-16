@@ -24,6 +24,7 @@ Agent A appends a row in the **same commit** that changes a package.json, env va
 | @testing-library/react | ^16.3.3 | dev | component testing | chore/phase-0 |
 | @testing-library/dom | ^10.4.2 | dev | peer of @testing-library/react | chore/phase-0 |
 | @testing-library/jest-dom | ^7.0.1 | dev | DOM matchers (`toBeInTheDocument`), loaded in `src/test/setup.ts` | chore/phase-0 |
+| @testing-library/user-event | ^14.6.8 | dev | realistic typing/clicking in page tests | fe/A2-auth-pages |
 | eslint | ^10.13.0 | dev | linting (flat config `eslint.config.js`) | chore/phase-0 |
 | @eslint/js | ^10.0.1 | dev | ESLint recommended rules | chore/phase-0 |
 | typescript-eslint | ^8.71.2 | dev | TypeScript lint rules | chore/phase-0 |
