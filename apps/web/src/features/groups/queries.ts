@@ -13,7 +13,7 @@ export const groupKeys = {
 };
 
 export function useMyGroups() {
-  return useQuery({ queryKey: groupKeys.list, queryFn: () => unwrap(api.GET('/groups')) });
+  return useQuery({ queryKey: groupKeys.list, queryFn: () => unwrap(api.GET('/groups')), meta: { silent: true } });
 }
 
 export function useGroup(groupId: string) {
@@ -36,6 +36,7 @@ export function useSuggestedSlots(groupId: string, days = 7, minMinutes = 60) {
         }),
       );
     },
+    meta: { silent: true },
   });
 }
 
@@ -45,6 +46,7 @@ export function useSuggestedLocations(groupId: string, type: Schemas['LocationTy
     queryFn: () =>
       unwrap(api.GET('/groups/{groupId}/suggested-locations', { params: { path: { groupId }, query: { ...(type ? { type } : {}), limit } } })),
     placeholderData: keepPreviousData,
+    meta: { silent: true },
   });
 }
 
@@ -52,6 +54,7 @@ export function useGroupSessions(groupId: string) {
   return useQuery({
     queryKey: groupKeys.sessions(groupId),
     queryFn: () => unwrap(api.GET('/groups/{groupId}/sessions', { params: { path: { groupId } } })),
+    meta: { silent: true },
   });
 }
 

@@ -1,4 +1,5 @@
-import { screen } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { http } from 'msw';
 import { describe, expect, it } from 'vitest';
 import { tokenStore } from './api/tokens';
@@ -39,11 +40,28 @@ describe('app shell', () => {
     expect(tokenStore.get()).toBeNull();
   });
 
-  it('shows a toast based on the error code when a request fails', async () => {
+  it('shows a toast based on the error code when an action fails', async () => {
+    const user = userEvent.setup();
     loginAsDemo();
-    server.use(http.get(url('/me'), () => apiError(404, 'NOT_FOUND', 'no such user')));
+    server.use(http.post(url('/matching/swipes'), () => apiError(409, 'GROUP_FULL', 'internal message')));
+    renderApp('/discover');
+    await screen.findByRole('article');
+
+    await user.click(screen.getByRole('button', { name: 'Like' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('This group is already full.');
+  });
+
+  it('shows a retryable error page when the profile cannot be loaded', async () => {
+    const user = userEvent.setup();
+    loginAsDemo();
+    server.use(http.get(url('/me'), () => apiError(500, 'INTERNAL', 'Database unavailable'), { once: true }));
     renderApp('/');
-    expect(await screen.findByRole('alert')).toHaveTextContent("We couldn't find what you were looking for.");
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent("Couldn't load your profile.");
+    await user.click(within(alert).getByRole('button', { name: 'Try again' }));
+    expect(await screen.findByRole('heading', { name: 'Welcome, Demo Student!' })).toBeInTheDocument();
   });
 
   it('renders a not-found page for unknown routes', async () => {

@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import type { Schemas } from '@sgm/contracts';
+import { QueryError } from '../components/QueryError';
 import { Spinner } from '../components/Spinner';
 import { MatchModal } from '../features/matching/MatchModal';
 import type { CandidateKind } from '../features/matching/queries';
@@ -23,6 +24,7 @@ export function DiscoverPage() {
   const closeMatch = useCallback(() => setMatched(null), []);
 
   if (mySubjects.isPending) return <Spinner label="Loading your subjects" />;
+  if (mySubjects.isError) return <QueryError what="your subjects" error={mySubjects.error} onRetry={() => void mySubjects.refetch()} />;
 
   if (!selected) {
     return (

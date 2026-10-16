@@ -18,6 +18,7 @@ export function useWeekSchedule(weekStart: DateTime) {
     queryKey: calendarKeys.schedule(query.from),
     queryFn: () => unwrap(api.GET('/me/schedule', { params: { query } })),
     placeholderData: keepPreviousData,
+    meta: { silent: true },
   });
 }
 
@@ -27,5 +28,6 @@ export function useWeekAvailability(weekStart: DateTime) {
     queryKey: calendarKeys.availability(query.from),
     queryFn: () => unwrap(api.GET('/me/availability', { params: { query } })),
     placeholderData: keepPreviousData,
+    meta: { silent: true },
   });
 }

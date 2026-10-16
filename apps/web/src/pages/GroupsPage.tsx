@@ -1,4 +1,5 @@
 import { Link } from 'react-router';
+import { QueryError } from '../components/QueryError';
 import { Spinner } from '../components/Spinner';
 import { useMyGroups } from '../features/groups/queries';
 import { formatSlot, inZone } from '../lib/time';
@@ -11,7 +12,9 @@ export function GroupsPage() {
       <h1 className="text-2xl font-bold tracking-tight">My groups</h1>
       {groups.isPending ? (
         <Spinner label="Loading your groups" />
-      ) : groups.data?.length ? (
+      ) : groups.isError ? (
+        <QueryError what="your groups" error={groups.error} onRetry={() => void groups.refetch()} />
+      ) : groups.data.length ? (
         <ul className="flex flex-col gap-3">
           {groups.data.map((g) => (
             <li key={g.id}>

@@ -1,6 +1,7 @@
 import { DateTime } from 'luxon';
 import { useSearchParams } from 'react-router';
 import { Button } from '../components/form/Button';
+import { QueryError } from '../components/QueryError';
 import { Spinner } from '../components/Spinner';
 import { NeptunPanel } from '../features/calendar/NeptunPanel';
 import { useWeekAvailability, useWeekSchedule } from '../features/calendar/queries';
@@ -57,7 +58,16 @@ export function CalendarPage() {
         </span>
       </div>
 
-      {schedule.isPending || availability.isPending ? (
+      {schedule.isError || availability.isError ? (
+        <QueryError
+          what="your week"
+          error={schedule.error ?? availability.error}
+          onRetry={() => {
+            void schedule.refetch();
+            void availability.refetch();
+          }}
+        />
+      ) : schedule.isPending || availability.isPending ? (
         <Spinner label="Loading your week" />
       ) : (
         <>

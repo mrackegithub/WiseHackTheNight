@@ -15,6 +15,7 @@ export function useCandidates(subjectId: string, kind: CandidateKind) {
     queryKey: matchingKeys.candidates(subjectId, kind),
     queryFn: () => unwrap(api.GET('/matching/candidates', { params: { query: { subjectId, kind, limit: 10 } } })),
     staleTime: 0,
+    meta: { silent: true },
   });
 }
 

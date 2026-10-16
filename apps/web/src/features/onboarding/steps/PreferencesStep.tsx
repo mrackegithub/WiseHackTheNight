@@ -4,6 +4,7 @@ import type { Schemas } from '@sgm/contracts';
 import { api } from '../../../api/client';
 import { unwrap } from '../../../api/errors';
 import { RangeField } from '../../../components/form/RangeField';
+import { QueryError } from '../../../components/QueryError';
 import { Spinner } from '../../../components/Spinner';
 import { messageForError } from '../../../lib/error-messages';
 import { formatMinutes, locationTypeLabels, modeLabels } from '../../../lib/labels';
@@ -16,7 +17,8 @@ type Preferences = Schemas['Preferences'];
 export function PreferencesStep(props: StepProps) {
   const prefs = useMyPreferences();
   if (prefs.isPending) return <Spinner label="Loading your preferences" />;
-  return <PreferencesEditor {...props} initial={prefs.data!} />;
+  if (prefs.isError) return <QueryError what="your preferences" error={prefs.error} onRetry={() => void prefs.refetch()} />;
+  return <PreferencesEditor {...props} initial={prefs.data} />;
 }
 
 function PreferencesEditor({ onNext, onBack, initial }: StepProps & { initial: Preferences }) {
