@@ -16,6 +16,7 @@ Agent A appends a row in the **same commit** that changes a package.json, env va
 | luxon | ^3.7.2 | prod | Europe/Budapest week/time math in the calendar (ARCHITECTURE §5: UTC on the wire, Budapest in the UI); DST-safe | fe/A4-calendar-week-view |
 | @types/luxon | ^3.7.6 | dev | luxon types | fe/A4-calendar-week-view |
 | framer-motion | ^14.3.0 | prod | drag-to-swipe gestures and card animations on /discover (ARCHITECTURE §2); respects reduced motion; tests set `MotionGlobalConfig.skipAnimations` | fe/A5-swipe-gestures |
+| @playwright/test | ^1.64.1 | dev | end-to-end tests (`apps/web/e2e`, `pnpm --filter @sgm/web e2e`; first time: `pnpm --filter @sgm/web exec playwright install chromium`). Runs its own Vite on :5174 with mocks on; `E2E_USE_MOCKS=false` targets the real API | fe/A10-e2e-happy-path |
 | vite | ^8.3.4 | dev | dev server (port 5173) and bundler | chore/phase-0 |
 | @vitejs/plugin-react | ^6.1.2 | dev | React JSX / fast refresh for Vite | chore/phase-0 |
 | tailwindcss | ^4.3.3 | dev | utility CSS (v4: `@import 'tailwindcss'` in `src/index.css`, no tailwind.config) | chore/phase-0 |
