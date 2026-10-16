@@ -3,6 +3,7 @@ import { http, HttpResponse } from 'msw';
 import type { Schemas } from '@sgm/contracts';
 import { expandTimetable, freeSlots } from '../calendar';
 import type { MockUser } from '../db';
+import { sessionEvents } from '../sessions';
 import { apiError, authed, url } from '../utils';
 
 /** Parses the required from/to query (max 31 days, contract `From`/`To` parameters). */
@@ -15,7 +16,9 @@ function range(request: Request) {
   return { from, to };
 }
 
-const busyEvents = (user: MockUser, from: DateTime, to: DateTime) => expandTimetable(user.calendar.timetable, from, to);
+/** Classes from Neptun plus planned study sessions of the user's groups. */
+const busyEvents = (user: MockUser, from: DateTime, to: DateTime) =>
+  [...expandTimetable(user.calendar.timetable, from, to), ...sessionEvents(user.me.id, from, to)].sort((a, b) => a.start.localeCompare(b.start));
 
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 

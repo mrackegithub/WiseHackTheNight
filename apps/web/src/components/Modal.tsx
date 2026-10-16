@@ -7,13 +7,14 @@ interface ModalProps {
   children: ReactNode;
   /** Optional description id content, read by screen readers after the title. */
   description?: ReactNode;
+  size?: 'sm' | 'md';
 }
 
 /**
  * Accessible dialog: labelled, Escape and backdrop close it, focus moves inside on open
  * (to [data-autofocus] if present) and is kept inside with Tab, then returns on close.
  */
-export function Modal({ title, onClose, children, description }: ModalProps) {
+export function Modal({ title, onClose, children, description, size = 'sm' }: ModalProps) {
   const titleId = useId();
   const descId = useId();
   const panel = useRef<HTMLDivElement>(null);
@@ -58,7 +59,7 @@ export function Modal({ title, onClose, children, description }: ModalProps) {
         aria-labelledby={titleId}
         aria-describedby={description ? descId : undefined}
         tabIndex={-1}
-        className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl outline-none"
+        className={`max-h-[90vh] w-full overflow-y-auto rounded-2xl bg-white p-6 shadow-xl outline-none ${size === 'md' ? 'max-w-lg' : 'max-w-sm'}`}
       >
         <h2 id={titleId} className="text-center text-2xl font-bold">
           {title}
