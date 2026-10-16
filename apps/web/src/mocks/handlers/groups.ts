@@ -1,7 +1,9 @@
 import { DateTime } from 'luxon';
 import { http, HttpResponse } from 'msw';
 import type { Schemas } from '@sgm/contracts';
-import { db, type MockUser } from '../db';
+import { locationById } from '../data/locations';
+import { db, nextId, type MockUser } from '../db';
+import { busyMember } from '../sessions';
 import { suggestedLocations } from '../group-locations';
 import { suggestedSlots } from '../group-slots';
 import { isMember, toGroup, toGroupSummary } from '../groups';
@@ -87,6 +89,38 @@ export const groupHandlers = [
       const group = visibleGroup(user, params.groupId);
       if (!group) return notFound();
       return HttpResponse.json<Schemas['StudySession'][]>([...group.sessions].sort((a, b) => a.start.localeCompare(b.start)));
+    }),
+  ),
+
+  http.post(
+    url('/groups/:groupId/sessions'),
+    authed(async (user, { params, request }) => {
+      const group = visibleGroup(user, params.groupId);
+      if (!group || !isMember(group, user.me.id)) return notFound();
+      const body = (await request.json()) as Schemas['CreateSessionRequest'];
+
+      const start = Date.parse(body.start);
+      const end = Date.parse(body.end);
+      if (!(start < end) || end - start > 8 * 3_600_000) return apiError(422, 'VALIDATION_FAILED', 'Invalid time', [{ path: 'end', issue: 'end after start, at most 8 h' }]);
+      if (body.onlineUrl && !/^https?:\/\/\S+$/.test(body.onlineUrl)) return apiError(422, 'VALIDATION_FAILED', 'Invalid link', [{ path: 'onlineUrl', issue: 'must be a URL' }]);
+      const location = body.locationId ? locationById(body.locationId) : null;
+      if (body.locationId && !location) return apiError(422, 'VALIDATION_FAILED', 'Unknown location', [{ path: 'locationId', issue: 'unknown location' }]);
+
+      const busy = busyMember(group, body.start, body.end);
+      if (busy) return apiError(409, 'CONFLICT', `${busy} is busy at that time`);
+
+      const session: Schemas['StudySession'] = {
+        id: nextId(),
+        groupId: group.id,
+        start: new Date(start).toISOString().replace('.000', ''),
+        end: new Date(end).toISOString().replace('.000', ''),
+        location: location ?? null,
+        onlineUrl: body.onlineUrl ?? null,
+        bookingId: body.bookingId ?? null,
+        status: 'PLANNED',
+      };
+      group.sessions.push(session);
+      return HttpResponse.json<Schemas['StudySession']>(session, { status: 201 });
     }),
   ),
 ];

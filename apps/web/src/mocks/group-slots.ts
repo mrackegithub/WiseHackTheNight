@@ -5,6 +5,7 @@ import { defaultWindows, expandTimetable, freeSlots } from './calendar';
 import { people } from './data/people';
 import { db } from './db';
 import type { MockGroup } from './groups';
+import { sessionEvents } from './sessions';
 
 /**
  * Mock of getGroupSuggestedSlots: free slots of the group's real users (windows − classes), with each
@@ -14,7 +15,13 @@ import type { MockGroup } from './groups';
 export function suggestedSlots(group: MockGroup, from: DateTime, to: DateTime, minMinutes: number): Schemas['SuggestedSlot'][] {
   const realUser = group.members.map((m) => db.users.get(m.userId)).find(Boolean);
   const base = realUser
-    ? freeSlots(realUser.calendar.windows, expandTimetable(realUser.calendar.timetable, from, to), from, to, minMinutes)
+    ? freeSlots(
+        realUser.calendar.windows,
+        [...expandTimetable(realUser.calendar.timetable, from, to), ...sessionEvents(realUser.me.id, from, to)],
+        from,
+        to,
+        minMinutes,
+      )
     : freeSlots(defaultWindows(), [], from, to, minMinutes);
 
   const memberIds = group.members.map((m) => m.userId);

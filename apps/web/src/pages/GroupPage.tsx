@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
+import type { Schemas } from '@sgm/contracts';
 import { ApiError } from '../api/errors';
 import { Button } from '../components/form/Button';
 import { Spinner } from '../components/Spinner';
@@ -9,7 +10,9 @@ import { SessionsList } from '../features/groups/SessionsList';
 import { SuggestedLocations } from '../features/groups/SuggestedLocations';
 import { SuggestedSlots } from '../features/groups/SuggestedSlots';
 import { initials, theirRole } from '../features/matching/card-helpers';
+import { ScheduleSessionModal } from '../features/sessions/ScheduleSessionModal';
 import { messageForError } from '../lib/error-messages';
+import { formatSlot } from '../lib/time';
 import { toast } from '../lib/toast';
 
 export function GroupPage() {
@@ -19,6 +22,7 @@ export function GroupPage() {
   const group = useGroup(groupId);
   const leave = useLeaveGroup(groupId);
   const [confirmLeave, setConfirmLeave] = useState(false);
+  const [scheduling, setScheduling] = useState<Schemas['SuggestedSlot'] | null>(null);
 
   if (group.isPending) return <Spinner label="Loading group" />;
   if (group.isError) {
@@ -81,7 +85,19 @@ export function GroupPage() {
         </ul>
       </section>
 
-      <SuggestedSlots group={g} />
+      <SuggestedSlots
+        group={g}
+        action={
+          isMember
+            ? (slot) => (
+                <Button variant="secondary" className="px-3 py-1" onClick={() => setScheduling(slot)} aria-label={`Schedule ${formatSlot(slot.start, slot.end)}`}>
+                  Schedule
+                </Button>
+              )
+            : undefined
+        }
+      />
+      {scheduling && <ScheduleSessionModal group={g} slot={scheduling} onClose={() => setScheduling(null)} />}
       <SuggestedLocations groupId={g.id} />
       <SessionsList groupId={g.id} />
 
