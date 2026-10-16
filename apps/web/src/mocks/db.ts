@@ -1,4 +1,5 @@
 import type { Schemas } from '@sgm/contracts';
+import { interests } from './data/interests';
 import { subjectById } from './data/subjects';
 
 /**
@@ -9,14 +10,26 @@ export interface MockUser {
   me: Schemas['Me'];
   password: string;
   subjects: Schemas['UserSubject'][];
+  /** null until PUT /me/preferences was called (GET returns the defaults meanwhile). */
+  preferences: Schemas['Preferences'] | null;
 }
 
 export const DEMO_USER_ID = '00000000-0000-4000-8000-000000000001';
 export const DEMO_EMAIL = 'demo@sgm.local';
 export const DEMO_PASSWORD = 'password123';
 
+/** Contract defaults for Preferences. */
+export const defaultPreferences = (): Schemas['Preferences'] => ({
+  groupSizeMin: 2,
+  groupSizeMax: 4,
+  maxDistanceKm: 5,
+  sessionLengthMinutes: 90,
+  locationTypes: [],
+  mode: 'EITHER',
+});
+
 /** Bump when the shape below changes, so stale browser-saved mock data is discarded instead of crashing. */
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 
 const userSubject = (subjectId: string, role: Schemas['RoleTag'], confidence = 3): Schemas['UserSubject'] => ({
   subject: subjectById(subjectId)!,
@@ -25,7 +38,7 @@ const userSubject = (subjectId: string, role: Schemas['RoleTag'], confidence = 3
 });
 
 export function newMockUser(me: Schemas['Me'], password: string): MockUser {
-  return { me, password, subjects: [] };
+  return { me, password, subjects: [], preferences: null };
 }
 
 function seed() {
@@ -40,7 +53,7 @@ function seed() {
         university: 'ELTE',
         faculty: 'Faculty of Informatics',
         location: { lat: 47.473, lng: 19.062, label: 'Lágymányos' },
-        interests: [],
+        interests: [interests[0], interests[3], interests[22]],
         onboardingComplete: true,
         createdAt: '2026-09-01T08:00:00Z',
       },
@@ -51,6 +64,7 @@ function seed() {
       userSubject('00000000-0000-4000-8001-000000000016', 'NEEDS_HELP', 2),
       userSubject('00000000-0000-4000-8001-000000000009', 'PEER'),
     ],
+    preferences: { ...defaultPreferences(), groupSizeMax: 3, maxDistanceKm: 4, locationTypes: ['LIBRARY', 'CAFE'], mode: 'IN_PERSON' },
   };
 
   return {
