@@ -105,6 +105,11 @@ export const groupHandlers = [
       if (body.onlineUrl && !/^https?:\/\/\S+$/.test(body.onlineUrl)) return apiError(422, 'VALIDATION_FAILED', 'Invalid link', [{ path: 'onlineUrl', issue: 'must be a URL' }]);
       const location = body.locationId ? locationById(body.locationId) : null;
       if (body.locationId && !location) return apiError(422, 'VALIDATION_FAILED', 'Unknown location', [{ path: 'locationId', issue: 'unknown location' }]);
+      // "If bookingId is given it must belong to this group" (contract)
+      const booking = body.bookingId ? db.bookings.get(body.bookingId) : null;
+      if (body.bookingId && (!booking || booking.groupId !== group.id || booking.status === 'CANCELLED')) {
+        return apiError(422, 'VALIDATION_FAILED', 'Invalid booking', [{ path: 'bookingId', issue: 'must be an active booking of this group' }]);
+      }
 
       const busy = busyMember(group, body.start, body.end);
       if (busy) return apiError(409, 'CONFLICT', `${busy} is busy at that time`);

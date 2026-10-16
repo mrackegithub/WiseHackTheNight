@@ -1,5 +1,8 @@
 import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import type { Schemas } from '@sgm/contracts';
+import { api } from '../../api/client';
+import { unwrap } from '../../api/errors';
 import { Spinner } from '../../components/Spinner';
 import { formatSlot } from '../../lib/time';
 import { useGroupSessions } from './queries';
@@ -10,8 +13,38 @@ const statusBadge: Record<Schemas['StudySession']['status'], { label: string; cl
   CANCELLED: { label: 'Cancelled', className: 'bg-red-100 text-red-700' },
 };
 
+const bookingLabel: Record<Schemas['Booking']['status'], string> = {
+  CONFIRMED: 'booked',
+  PENDING: 'booking pending',
+  CANCELLED: 'booking cancelled',
+  FAILED: 'booking failed',
+};
+
+/** "· Group room 2 booked" for sessions linked to a room booking. */
+function BookedRoom({ bookingId }: { bookingId: string }) {
+  const booking = useQuery({
+    queryKey: ['bookings', bookingId],
+    queryFn: () => unwrap(api.GET('/bookings/{bookingId}', { params: { path: { bookingId } } })),
+    meta: { silent: true },
+  });
+  if (!booking.data) return null;
+  return (
+    <span className={booking.data.status === 'CONFIRMED' ? 'text-emerald-700' : 'text-amber-700'}>
+      {' '}
+      · {booking.data.room.name} {bookingLabel[booking.data.status]}
+    </span>
+  );
+}
+
 function Where({ session: s }: { session: Schemas['StudySession'] }) {
-  if (s.location) return <>{s.location.name}</>;
+  if (s.location) {
+    return (
+      <>
+        {s.location.name}
+        {s.bookingId && <BookedRoom bookingId={s.bookingId} />}
+      </>
+    );
+  }
   if (s.onlineUrl) {
     return (
       <a href={s.onlineUrl} target="_blank" rel="noreferrer" className="text-indigo-700 hover:underline">

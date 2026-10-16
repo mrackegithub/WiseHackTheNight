@@ -5,6 +5,7 @@ import { locationHandlers } from './locations';
 import { matchingHandlers } from './matching';
 import { neptunHandlers } from './neptun';
 import { profileHandlers } from './profile';
+import { roomHandlers } from './rooms';
 import { subjectHandlers } from './subjects';
 import { systemHandlers } from './system';
 
@@ -19,4 +20,5 @@ export const handlers = [
   ...neptunHandlers,
   ...matchingHandlers,
   ...groupHandlers,
+  ...roomHandlers,
 ];
