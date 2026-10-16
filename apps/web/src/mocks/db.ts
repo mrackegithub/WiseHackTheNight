@@ -68,3 +68,37 @@ export function nextId() {
   idCounter += 1;
   return `00000000-0000-4000-8000-${idCounter.toString().padStart(12, '0')}`;
 }
+
+// ── Browser persistence: keeps mock logins/edits across page reloads (not used in tests) ──
+const STORAGE_KEY = 'sgm.mockdb';
+const replacer = (_key: string, value: unknown) => (value instanceof Map ? { __map: [...value] } : value);
+const reviver = (_key: string, value: unknown) =>
+  value && typeof value === 'object' && '__map' in value ? new Map((value as { __map: [unknown, unknown][] }).__map) : value;
+
+export function saveDb() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ db, tokenCounter, idCounter }, replacer));
+  } catch {
+    // storage full or unavailable: mocks just won't survive a reload
+  }
+}
+
+export function loadDb() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return;
+    const saved = JSON.parse(raw, reviver) as { db: Partial<ReturnType<typeof seed>>; tokenCounter: number; idCounter: number };
+    // Merge onto a fresh seed so collections added by newer code still get their seed data.
+    db = { ...seed(), ...saved.db };
+    tokenCounter = saved.tokenCounter;
+    idCounter = saved.idCounter;
+  } catch {
+    db = seed();
+  }
+}
+
+/** Wipes persisted mock data. Run `localStorage.removeItem('sgm.mockdb')` in the console for the same effect. */
+export function clearSavedDb() {
+  localStorage.removeItem(STORAGE_KEY);
+  resetDb();
+}
