@@ -10,6 +10,9 @@ Agent A appends a row in the **same commit** that changes a package.json, env va
 | @tanstack/react-query | ^5.104.3 | prod | server-state cache / data fetching | chore/phase-0 |
 | openapi-fetch | ^0.17.0 | prod | typed fetch client generated from `@sgm/contracts` `paths` | chore/phase-0 |
 | @sgm/contracts | workspace:* | prod | shared OpenAPI types | chore/phase-0 |
+| leaflet | ^1.9.4 | prod | maps (OSM tiles from `VITE_MAP_TILE_URL`); lazy-loaded chunk with its CSS | fe/A3-onboarding-location |
+| react-leaflet | ^4.2.1 | prod | React bindings for Leaflet. **Stay on 4.x**: 5.x requires React 19 | fe/A3-onboarding-location |
+| @types/leaflet | ^1.9.22 | dev | Leaflet types | fe/A3-onboarding-location |
 | vite | ^8.3.4 | dev | dev server (port 5173) and bundler | chore/phase-0 |
 | @vitejs/plugin-react | ^6.1.2 | dev | React JSX / fast refresh for Vite | chore/phase-0 |
 | tailwindcss | ^4.3.3 | dev | utility CSS (v4: `@import 'tailwindcss'` in `src/index.css`, no tailwind.config) | chore/phase-0 |

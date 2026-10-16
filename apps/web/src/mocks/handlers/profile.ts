@@ -2,7 +2,7 @@ import { http, HttpResponse } from 'msw';
 import type { Schemas } from '@sgm/contracts';
 import { interestById, interests } from '../data/interests';
 import { subjectById } from '../data/subjects';
-import { defaultPreferences } from '../db';
+import { defaultPreferences, updateOnboarding } from '../db';
 import { apiError, authed, url } from '../utils';
 
 type Detail = { path: string; issue: string };
@@ -53,6 +53,7 @@ export const profileHandlers = [
       if (unknown) return apiError(422, 'VALIDATION_FAILED', 'Unknown subject', [{ path: 'subjectId', issue: `unknown subject ${unknown.subjectId}` }]);
 
       user.subjects = body.map((s) => ({ subject: subjectById(s.subjectId)!, role: s.role, confidence: s.confidence ?? 3 }));
+      updateOnboarding(user);
       return HttpResponse.json<Schemas['UserSubject'][]>(user.subjects);
     }),
   ),
@@ -78,7 +79,24 @@ export const profileHandlers = [
       if (details.length) return apiError(422, 'VALIDATION_FAILED', 'Invalid preferences', details);
 
       user.preferences = p;
+      updateOnboarding(user);
       return HttpResponse.json<Schemas['Preferences']>(p);
+    }),
+  ),
+
+  http.put(
+    url('/me/location'),
+    authed(async (user, { request }) => {
+      const body = (await request.json()) as Schemas['GeoPointInput'];
+      const valid = typeof body.lat === 'number' && typeof body.lng === 'number' && Math.abs(body.lat) <= 90 && Math.abs(body.lng) <= 180;
+      if (!valid) return apiError(422, 'VALIDATION_FAILED', 'Invalid location', [{ path: 'lat', issue: 'lat/lng out of range' }]);
+
+      // "Rounded to ~100 m before storage" (contract)
+      const round = (n: number) => Math.round(n * 1000) / 1000;
+      const point: Schemas['GeoPoint'] = { lat: round(body.lat), lng: round(body.lng), ...(body.label ? { label: body.label.slice(0, 120) } : {}) };
+      user.me = { ...user.me, location: point };
+      updateOnboarding(user);
+      return HttpResponse.json<Schemas['GeoPoint']>(point);
     }),
   ),
 ];

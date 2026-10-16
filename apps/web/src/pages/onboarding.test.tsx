@@ -130,8 +130,8 @@ describe('Onboarding: preferences step', () => {
     await user.click(screen.getByLabelText('Coworking space'));
     await user.click(screen.getByRole('button', { name: 'Continue' }));
 
-    await screen.findByText("You're all set! Start finding study partners.");
-    expect(router.state.location.pathname).toBe('/');
+    expect(await screen.findByRole('heading', { name: 'Your home base' })).toBeInTheDocument();
+    expect(router.state.location.search).toBe('?step=location');
     expect(demo().preferences).toMatchObject({ groupSizeMin: 4, groupSizeMax: 4, locationTypes: ['LIBRARY', 'CAFE', 'COWORKING'], mode: 'IN_PERSON' });
   });
 
