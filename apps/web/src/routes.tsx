@@ -1,37 +1,38 @@
 import type { RouteObject } from 'react-router';
 import { Layout } from './components/Layout';
+import { Spinner } from './components/Spinner';
 import { GuestOnly } from './features/auth/GuestOnly';
 import { RequireAuth } from './features/auth/RequireAuth';
 import { RequireOnboarding } from './features/onboarding/RequireOnboarding';
-import { CalendarPage } from './pages/CalendarPage';
-import { DiscoverPage } from './pages/DiscoverPage';
-import { GroupPage } from './pages/GroupPage';
-import { GroupsPage } from './pages/GroupsPage';
 import { HomePage } from './pages/HomePage';
 import { LoginPage } from './pages/LoginPage';
 import { NotFoundPage } from './pages/NotFoundPage';
-import { OnboardingPage } from './pages/OnboardingPage';
 import { RegisterPage } from './pages/RegisterPage';
 
+/*
+ * Small, first-visit pages are bundled eagerly; the heavy ones (framer-motion, luxon, Leaflet, the
+ * onboarding wizard) are split per route so the first load only ships the shell.
+ */
 export const routes: RouteObject[] = [
   {
     element: <Layout />,
+    hydrateFallbackElement: <Spinner label="Loading" />,
     children: [
       { element: <GuestOnly />, children: [{ path: '/login', element: <LoginPage /> }] },
       { element: <GuestOnly redirectTo="/onboarding" />, children: [{ path: '/register', element: <RegisterPage /> }] },
       {
         element: <RequireAuth />,
         children: [
-          { path: '/onboarding', element: <OnboardingPage /> },
+          { path: '/onboarding', lazy: () => import('./pages/OnboardingPage').then((m) => ({ Component: m.OnboardingPage })) },
           // Everything else needs a finished profile.
           {
             element: <RequireOnboarding />,
             children: [
               { index: true, element: <HomePage /> },
-              { path: '/discover', element: <DiscoverPage /> },
-              { path: '/calendar', element: <CalendarPage /> },
-              { path: '/groups', element: <GroupsPage /> },
-              { path: '/groups/:groupId', element: <GroupPage /> },
+              { path: '/discover', lazy: () => import('./pages/DiscoverPage').then((m) => ({ Component: m.DiscoverPage })) },
+              { path: '/calendar', lazy: () => import('./pages/CalendarPage').then((m) => ({ Component: m.CalendarPage })) },
+              { path: '/groups', lazy: () => import('./pages/GroupsPage').then((m) => ({ Component: m.GroupsPage })) },
+              { path: '/groups/:groupId', lazy: () => import('./pages/GroupPage').then((m) => ({ Component: m.GroupPage })) },
             ],
           },
         ],
