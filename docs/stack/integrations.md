@@ -9,6 +9,7 @@ Agent C appends a row in the **same commit** that changes a package.json, env va
 | vitest | ^5.0.5 | dev | unit tests (`passWithNoTests` until C1 lands) | chore/phase-0 |
 | luxon | ^3.7.2 | prod | timezone-aware date math in Europe/Budapest | int/C1-slot-geo-utils |
 | @types/luxon | ^3.7.6 | dev | TypeScript types for luxon | int/C1-slot-geo-utils |
+| node-ical | ^0.27.3 | prod | iCal/ICS file parsing and recurrence expansion | int/C2-ics-parser |
 
 ## Env vars
 

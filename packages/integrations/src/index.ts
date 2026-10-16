@@ -10,3 +10,16 @@ export {
 } from './slots/slots';
 export { expandWeeklyWindows, type WeeklyWindow } from './slots/windows';
 export { SimpleGeoService, geoService } from './geo/geo';
+export {
+  normalizeCalendarUrl,
+  isPrivateIp,
+  validateSafeUrl,
+  fetchIcs,
+  type FetchIcsOptions,
+} from './neptun/ssrf';
+export {
+  extractCourseCodes,
+  parseIcs,
+  type ParsedCalendarEvent,
+  type ParseIcsOptions,
+} from './neptun/parser';
