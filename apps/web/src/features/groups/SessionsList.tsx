@@ -53,7 +53,7 @@ function Where({ session: s }: { session: Schemas['StudySession'] }) {
       </a>
     );
   }
-  return <span className="text-slate-400">Place not set</span>;
+  return <span className="text-slate-500">Place not set</span>;
 }
 
 export function SessionsList({ groupId }: { groupId: string }) {

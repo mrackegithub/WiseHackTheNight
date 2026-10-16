@@ -8,6 +8,7 @@ import { ProfileStep } from '../features/onboarding/steps/ProfileStep';
 import { SubjectsStep } from '../features/onboarding/steps/SubjectsStep';
 import type { StepProps } from '../features/onboarding/steps/types';
 import { toast } from '../lib/toast';
+import { usePageTitle } from '../hooks/usePageTitle';
 
 const steps: { id: string; label: string; Component: (props: StepProps) => React.ReactNode }[] = [
   { id: 'profile', label: 'Profile', Component: ProfileStep },
@@ -18,6 +19,7 @@ const steps: { id: string; label: string; Component: (props: StepProps) => React
 ];
 
 export function OnboardingPage() {
+  usePageTitle('Set up your profile');
   const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();

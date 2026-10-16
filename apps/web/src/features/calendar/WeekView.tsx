@@ -51,7 +51,7 @@ export function WeekView({ weekStart, events, freeSlots }: WeekViewProps) {
         <div className="grid grid-cols-[3rem_repeat(7,1fr)]">
           <div className="relative" style={{ height: HEIGHT }} aria-hidden>
             {hours.map((h) => (
-              <span key={h} className="absolute right-1 -translate-y-1/2 text-[10px] text-slate-400" style={{ top: (h - START_HOUR) * HOUR_PX }}>
+              <span key={h} className="absolute right-1 -translate-y-1/2 text-[10px] text-slate-500" style={{ top: (h - START_HOUR) * HOUR_PX }}>
                 {String(h).padStart(2, '0')}:00
               </span>
             ))}

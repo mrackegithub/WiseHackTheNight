@@ -5,6 +5,7 @@ import { ApiError } from '../api/errors';
 import { Button } from '../components/form/Button';
 import { Spinner } from '../components/Spinner';
 import { useAuth } from '../features/auth/auth-context';
+import { usePageTitle } from '../hooks/usePageTitle';
 import { useGroup, useLeaveGroup } from '../features/groups/queries';
 import { SessionsList } from '../features/groups/SessionsList';
 import { SuggestedLocations } from '../features/groups/SuggestedLocations';
@@ -23,6 +24,7 @@ export function GroupPage() {
   const leave = useLeaveGroup(groupId);
   const [confirmLeave, setConfirmLeave] = useState(false);
   const [scheduling, setScheduling] = useState<Schemas['SuggestedSlot'] | null>(null);
+  usePageTitle(group.data?.name ?? 'Group');
 
   if (group.isPending) return <Spinner label="Loading group" />;
   if (group.isError) {

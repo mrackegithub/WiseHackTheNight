@@ -71,7 +71,7 @@ export function WindowsEditor() {
                 {short}
               </span>
               <div className="flex flex-1 flex-col gap-2" role="group" aria-label={`${long} hours`}>
-                {dayRows.length === 0 && <span className="pt-1.5 text-sm text-slate-400">Not available</span>}
+                {dayRows.length === 0 && <span className="pt-1.5 text-sm text-slate-500">Not available</span>}
                 {dayRows.map((r, i) => (
                   <div key={r.key} className="flex items-center gap-2">
                     <input
@@ -95,7 +95,7 @@ export function WindowsEditor() {
                       type="button"
                       onClick={() => remove(r.key)}
                       aria-label={`Remove ${long} range ${i + 1}`}
-                      className="rounded px-2 text-lg leading-none text-slate-400 hover:text-red-600"
+                      className="rounded px-2 text-lg leading-none text-slate-500 hover:text-red-600"
                     >
                       ×
                     </button>

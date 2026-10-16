@@ -3,8 +3,10 @@ import { QueryError } from '../components/QueryError';
 import { Spinner } from '../components/Spinner';
 import { useMyGroups } from '../features/groups/queries';
 import { formatSlot, inZone } from '../lib/time';
+import { usePageTitle } from '../hooks/usePageTitle';
 
 export function GroupsPage() {
+  usePageTitle('My groups');
   const groups = useMyGroups();
 
   return (
@@ -29,7 +31,7 @@ export function GroupsPage() {
                   </span>
                 </span>
                 <span className="text-sm text-slate-600">{g.subject.name}</span>
-                <span className={`text-sm ${g.nextSessionAt ? 'text-indigo-700' : 'text-slate-400'}`}>
+                <span className={`text-sm ${g.nextSessionAt ? 'text-indigo-700' : 'text-slate-500'}`}>
                   {g.nextSessionAt ? `Next: ${formatSlot(g.nextSessionAt, g.nextSessionAt).split(' · ')[0]}, ${inZone(g.nextSessionAt).toFormat('HH:mm')}` : 'No session planned'}
                 </span>
               </Link>

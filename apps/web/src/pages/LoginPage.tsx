@@ -12,8 +12,10 @@ import { useAuth } from '../features/auth/auth-context';
 import { validateLogin } from '../features/auth/validation';
 import { config } from '../lib/config';
 import { messageForError } from '../lib/error-messages';
+import { usePageTitle } from '../hooks/usePageTitle';
 
 export function LoginPage() {
+  usePageTitle('Log in');
   const { login } = useAuth();
   const [values, setValues] = useState({ email: '', password: '' });
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
