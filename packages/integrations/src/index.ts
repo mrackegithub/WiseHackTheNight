@@ -9,6 +9,13 @@ export {
   totalDurationMinutes,
 } from './slots/slots';
 export { expandWeeklyWindows, type WeeklyWindow } from './slots/windows';
+export {
+  AvailabilityServiceImpl,
+  DEFAULT_WEEKLY_WINDOWS,
+  type AvailabilityDb,
+  type AvailabilityWindowRecord,
+  type CalendarEventRecord,
+} from './slots/availability';
 export { SimpleGeoService, geoService } from './geo/geo';
 export {
   normalizeCalendarUrl,
