@@ -212,44 +212,78 @@ describe('B6: Matching Candidates Deck', () => {
     });
 
     it('creates group and match on mutual LIKE', async () => {
-      // Partner likes demoUser first
-      const partnerSwipe = await app.inject({
+      // Register two dedicated test users to avoid concurrent interference
+      const stamp = Date.now();
+      const regA = await app.inject({
         method: 'POST',
-        url: '/api/v1/matching/swipes',
-        headers: { authorization: `Bearer ${testUser2Token}` },
+        url: '/api/v1/auth/register',
         payload: {
-          targetKind: 'user',
-          targetId: demoUserId,
-          subjectId: algoSubjectId,
-          direction: 'LIKE',
+          email: `mutual_a_${stamp}@sgm.local`,
+          password: 'password123',
+          displayName: 'Mutual A',
         },
       });
-      expect(partnerSwipe.statusCode).toBe(200);
-      expect(partnerSwipe.json().recorded).toBe(true);
-      expect(partnerSwipe.json().match).toBeNull();
+      const userAToken = regA.json().accessToken;
+      const userAId = app.jwt.decode<{ sub: string }>(userAToken)!.sub;
 
-      // DemoUser now likes partner -> mutual match!
-      const demoSwipe = await app.inject({
+      const regB = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/register',
+        payload: {
+          email: `mutual_b_${stamp}@sgm.local`,
+          password: 'password123',
+          displayName: 'Mutual B',
+        },
+      });
+      const userBToken = regB.json().accessToken;
+      const userBId = app.jwt.decode<{ sub: string }>(userBToken)!.sub;
+
+      // Add subject to both users
+      await app.prisma.userSubject.createMany({
+        data: [
+          { userId: userAId, subjectId: algoSubjectId, role: 'CAN_EXPLAIN', confidence: 4 },
+          { userId: userBId, subjectId: algoSubjectId, role: 'NEEDS_HELP', confidence: 2 },
+        ],
+      });
+
+      // User A likes User B first
+      const aSwipe = await app.inject({
         method: 'POST',
         url: '/api/v1/matching/swipes',
-        headers: { authorization: `Bearer ${demoToken}` },
+        headers: { authorization: `Bearer ${userAToken}` },
         payload: {
           targetKind: 'user',
-          targetId: testUser2Id,
+          targetId: userBId,
           subjectId: algoSubjectId,
           direction: 'LIKE',
         },
       });
-      expect(demoSwipe.statusCode).toBe(200);
-      const body = demoSwipe.json();
+      expect(aSwipe.statusCode).toBe(200);
+      expect(aSwipe.json().recorded).toBe(true);
+      expect(aSwipe.json().match).toBeNull();
+
+      // User B now likes User A -> mutual match!
+      const bSwipe = await app.inject({
+        method: 'POST',
+        url: '/api/v1/matching/swipes',
+        headers: { authorization: `Bearer ${userBToken}` },
+        payload: {
+          targetKind: 'user',
+          targetId: userAId,
+          subjectId: algoSubjectId,
+          direction: 'LIKE',
+        },
+      });
+      expect(bSwipe.statusCode).toBe(200);
+      const body = bSwipe.json();
       expect(body.recorded).toBe(true);
       expect(body.match).toBeDefined();
       expect(body.match.id).toBeDefined();
       expect(body.match.subject.id).toBe(algoSubjectId);
-      expect(body.match.otherUser.id).toBe(testUser2Id);
+      expect(body.match.otherUser.id).toBe(userAId);
       expect(body.match.groupId).toBeDefined();
 
-      // Check group created with partner as owner (partner liked first)
+      // Check group created with User A as owner (User A liked first)
       const group = await app.prisma.group.findUnique({
         where: { id: body.match.groupId },
         include: { members: true },
@@ -257,7 +291,7 @@ describe('B6: Matching Candidates Deck', () => {
       expect(group).toBeDefined();
       expect(group!.members).toHaveLength(2);
       const ownerMember = group!.members.find((m) => m.isOwner);
-      expect(ownerMember?.userId).toBe(testUser2Id);
+      expect(ownerMember?.userId).toBe(userAId);
     });
 
     it('joins open group on LIKE and fails with GROUP_FULL when full', async () => {
