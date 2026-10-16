@@ -13,8 +13,9 @@ export interface MapPlace {
 function FitToPlaces({ places }: { places: MapPlace[] }) {
   const map = useMap();
   useEffect(() => {
-    if (places.length === 1) map.setView([places[0].lat, places[0].lng], 15);
-    else if (places.length > 1) map.fitBounds(places.map((p) => [p.lat, p.lng] as [number, number]), { padding: [32, 32] });
+    // animate: false: a running zoom animation crashes Leaflet ("_leaflet_pos") if the page unmounts the map
+    if (places.length === 1) map.setView([places[0].lat, places[0].lng], 15, { animate: false });
+    else if (places.length > 1) map.fitBounds(places.map((p) => [p.lat, p.lng] as [number, number]), { padding: [32, 32], animate: false });
   }, [map, places]);
   return null;
 }
