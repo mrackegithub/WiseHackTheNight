@@ -1,7 +1,17 @@
 import type { Schemas } from '@sgm/contracts';
 import { defaultWindows, sampleTimetable, type TimetableEntry } from './calendar';
 import { interests } from './data/interests';
-import { subjectById } from './data/subjects';
+import { people } from './data/people';
+import { subjectById, subjects as subjectCatalogue } from './data/subjects';
+import type { MockGroup } from './groups';
+
+export interface MockSwipe {
+  targetKind: 'user' | 'group';
+  targetId: string;
+  subjectId: string;
+  direction: 'LIKE' | 'PASS';
+  at: string;
+}
 
 /**
  * In-memory "backend" for MSW. Shapes come from the contract (`Schemas[...]`), so a contract
@@ -21,6 +31,8 @@ export interface MockUser {
     timetable: TimetableEntry[];
     windows: Schemas['WeeklyWindow'][];
   };
+  swipes: MockSwipe[];
+  matches: Schemas['Match'][];
 }
 
 export const DEMO_USER_ID = '00000000-0000-4000-8000-000000000001';
@@ -38,7 +50,7 @@ export const defaultPreferences = (): Schemas['Preferences'] => ({
 });
 
 /** Bump when the shape below changes, so stale browser-saved mock data is discarded instead of crashing. */
-const DB_VERSION = 5;
+const DB_VERSION = 6;
 
 const userSubject = (subjectId: string, role: Schemas['RoleTag'], confidence = 3): Schemas['UserSubject'] => ({
   subject: subjectById(subjectId)!,
@@ -58,7 +70,23 @@ export function newMockUser(me: Schemas['Me'], password: string): MockUser {
       timetable: [],
       windows: defaultWindows(),
     },
+    swipes: [],
+    matches: [],
   };
+}
+
+/** Open groups to discover (one full), plus one the demo user already belongs to. */
+function seedGroups(): Map<string, MockGroup> {
+  const [algo, db, ana] = [subjectCatalogue[0].id, subjectCatalogue[8].id, subjectCatalogue[15].id];
+  const p = (i: number) => people[i].user.id;
+  const member = (userId: string, role: Schemas['RoleTag'], isOwner = false) => ({ userId, role, isOwner, joinedAt: '2026-10-01T10:00:00Z' });
+  const groups: MockGroup[] = [
+    { id: '00000000-0000-4000-8005-000000000001', name: 'Algo Night Owls', description: 'Late-evening problem sets, mostly graph algorithms.', subjectId: algo, maxSize: 4, isOpen: true, members: [member(p(6), 'NEEDS_HELP', true), member(p(1), 'CAN_EXPLAIN')], nextSessionAt: '2026-10-20T17:00:00Z' },
+    { id: '00000000-0000-4000-8005-000000000002', name: 'Analysis I survivors', description: 'Weekly practice sheet walkthroughs.', subjectId: ana, maxSize: 5, isOpen: true, members: [member(p(2), 'CAN_EXPLAIN', true), member(p(4), 'NEEDS_HELP'), member(p(13), 'NEEDS_HELP')], nextSessionAt: null },
+    { id: '00000000-0000-4000-8005-000000000003', name: 'SQL Squad', description: null, subjectId: db, maxSize: 3, isOpen: true, members: [member(p(3), 'CAN_EXPLAIN', true), member(p(10), 'CAN_EXPLAIN'), member(p(8), 'PEER')], nextSessionAt: null },
+    { id: '00000000-0000-4000-8005-000000000004', name: 'DB Thursday crew', description: 'We meet after the Thursday lecture.', subjectId: db, maxSize: 4, isOpen: true, members: [member(DEMO_USER_ID, 'PEER', true), member(p(11), 'PEER')], nextSessionAt: '2026-10-22T16:00:00Z' },
+  ];
+  return new Map(groups.map((g) => [g.id, g]));
 }
 
 /**
@@ -105,6 +133,7 @@ function seed() {
 
   return {
     users: new Map<string, MockUser>([[demo.me.id, demo]]),
+    groups: seedGroups(),
     /** token -> userId */
     accessTokens: new Map<string, string>(),
     refreshTokens: new Map<string, string>(),

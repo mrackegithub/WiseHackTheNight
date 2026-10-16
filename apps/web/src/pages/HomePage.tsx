@@ -1,3 +1,4 @@
+import { Link } from 'react-router';
 import { useAuth } from '../features/auth/auth-context';
 
 export function HomePage() {
@@ -8,6 +9,9 @@ export function HomePage() {
       <p className="max-w-md text-slate-600">
         Swipe on classmates who share your subjects and free time, then book a room together.
       </p>
+      <Link to="/discover" className="mt-2 rounded-md bg-indigo-600 px-5 py-2.5 font-medium text-white hover:bg-indigo-700">
+        Start swiping
+      </Link>
     </section>
   );
 }

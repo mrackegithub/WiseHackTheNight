@@ -24,3 +24,6 @@ export function formatWeekRange(weekStart: DateTime) {
 }
 
 export const minutesBetween = (a: string, b: string) => Math.round(inZone(b).diff(inZone(a), 'minutes').minutes);
+
+/** "Tue 13 Oct · 12:00–14:00" */
+export const formatSlot = (start: string, end: string) => `${inZone(start).toFormat('ccc d LLL')} · ${formatTimeRange(start, end)}`;
