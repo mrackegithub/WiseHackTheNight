@@ -1,4 +1,4 @@
-import type { PrismaClient, RoleTag } from '@prisma/client';
+import type { Prisma, PrismaClient, RoleTag, StudyMode } from '@prisma/client';
 import { AvailabilityServiceImpl, intersectMultipleSlots, intersectSlots, type AvailabilityDb, type TimeSlot } from '@sgm/integrations';
 import { conflict, notFound, validationError } from '../../core/errors.js';
 
@@ -33,6 +33,158 @@ function haversineDistance(
   return Math.round(R * c * 10) / 10;
 }
 
+/** One side of a match in a subject: what the score needs to know about a user. */
+interface MatchSide {
+  role: RoleTag;
+  maxDistanceKm: number;
+  mode: StudyMode;
+  groupRange: [number, number];
+  sessionLengthMinutes: number;
+  interestSlugs: string[];
+  point: { lat: number; lng: number } | null;
+}
+
+async function loadMatchSide(prisma: PrismaClient, userId: string, subjectId: string) {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    include: {
+      preferences: true,
+      subjects: { where: { subjectId } },
+      interests: { include: { interest: true } },
+      memberships: { select: { groupId: true } },
+    },
+  });
+  if (!user) {
+    throw notFound('User not found');
+  }
+  const side: MatchSide = {
+    role: (user.subjects[0]?.role ?? 'PEER') as RoleTag,
+    maxDistanceKm: user.preferences?.maxDistanceKm ?? 5,
+    mode: user.preferences?.mode ?? 'EITHER',
+    groupRange: [user.preferences?.groupSizeMin ?? 2, user.preferences?.groupSizeMax ?? 4],
+    sessionLengthMinutes: user.preferences?.sessionLengthMinutes ?? 90,
+    interestSlugs: user.interests.map((i) => i.interest.slug),
+    point: user.homeLat !== null && user.homeLng !== null ? { lat: user.homeLat, lng: user.homeLng } : null,
+  };
+  return { user, side };
+}
+
+const candidateInclude = {
+  user: { include: { preferences: true, interests: { include: { interest: true } } } },
+} satisfies Prisma.UserSubjectInclude;
+type CandidateEnrollment = Prisma.UserSubjectGetPayload<{ include: typeof candidateInclude }>;
+
+/** A user card for the deck, scored from `me`'s point of view; null if they're filtered out (too far apart, both in person). */
+function scoreUserCandidate(me: MatchSide, myFreeSlots: TimeSlot[], enrollment: CandidateEnrollment, candFreeSlots: TimeSlot[], subjectId: string) {
+  const candidateUser = enrollment.user;
+  const candPrefs = candidateUser.preferences;
+  const candMode = candPrefs?.mode ?? 'EITHER';
+  const candMaxDistance = candPrefs?.maxDistanceKm ?? 5;
+  const candGroupRange: [number, number] = [candPrefs?.groupSizeMin ?? 2, candPrefs?.groupSizeMax ?? 4];
+
+  const candPoint =
+    candidateUser.homeLat !== null && candidateUser.homeLng !== null
+      ? { lat: candidateUser.homeLat, lng: candidateUser.homeLng }
+      : null;
+
+  const isOnline = me.mode === 'ONLINE' || candMode === 'ONLINE';
+
+  let distanceKm: number | null = null;
+  if (me.point && candPoint) {
+    distanceKm = haversineDistance(me.point, candPoint);
+  }
+
+  const effectiveMaxDistance = Math.min(me.maxDistanceKm, candMaxDistance);
+
+  // Hard filter: distance if both are IN_PERSON only
+  if (!isOnline && me.mode === 'IN_PERSON' && candMode === 'IN_PERSON') {
+    if (distanceKm === null || distanceKm > effectiveMaxDistance) {
+      return null;
+    }
+  }
+
+  // Shared free slots
+  const sharedTimeSlots = intersectSlots(myFreeSlots, candFreeSlots, 30);
+  const overlappingMinutes = sharedTimeSlots.reduce((acc, slot) => {
+    return acc + (slot.end.getTime() - slot.start.getTime()) / (60 * 1000);
+  }, 0);
+
+  const candInterestSlugs = candidateUser.interests.map((i) => i.interest.slug);
+
+  // Calculate score breakdown
+  const scoreBreakdown = score({
+    overlappingFreeMinutes: overlappingMinutes,
+    sessionLengthMinutes: me.sessionLengthMinutes,
+    myRole: me.role,
+    candidateRole: enrollment.role,
+    myInterests: me.interestSlugs,
+    candidateInterests: candInterestSlugs,
+    distanceKm,
+    maxDistanceKm: effectiveMaxDistance,
+    isOnline,
+    myGroupRange: me.groupRange,
+    candidateGroupRange: candGroupRange,
+  });
+
+  // Find shared interests objects
+  const sharedInterests = candidateUser.interests
+    .filter((ci) => me.interestSlugs.includes(ci.interest.slug))
+    .map((ci) => ({
+      id: ci.interest.id,
+      slug: ci.interest.slug,
+      label: ci.interest.label,
+    }));
+
+  return {
+    kind: 'user' as const,
+    id: candidateUser.id,
+    subjectId,
+    user: {
+      id: candidateUser.id,
+      displayName: candidateUser.displayName,
+      avatarUrl: candidateUser.avatarUrl,
+      faculty: candidateUser.faculty,
+      bio: candidateUser.bio,
+    },
+    role: enrollment.role,
+    distanceKm,
+    sharedInterests,
+    sharedSlots: sharedTimeSlots.slice(0, 5).map((s) => ({
+      start: s.start.toISOString(),
+      end: s.end.toISOString(),
+    })),
+    score: scoreBreakdown,
+  };
+}
+
+/** Chance that a test account likes you back, from the match score you saw: 80 → ~9 in 10, 60 → ~half, under 40 → 1 in 10. */
+export const likeBackChance = (scoreTotal: number) => Math.min(0.95, Math.max(0.1, (scoreTotal - 30) / 55));
+
+/** A fixed number in [0, 1) per (swiper, target, subject), so re-swiping the same card doesn't re-roll. */
+function pairRoll(...ids: string[]): number {
+  let h = 0x811c9dc5; // FNV-1a
+  for (const ch of ids.join('|')) {
+    h ^= ch.charCodeAt(0);
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0) / 2 ** 32;
+}
+
+/**
+ * Test accounts (isSeed) never open the app, so they answer a LIKE themselves, more often the better the match.
+ * Real users still have to like back for real.
+ */
+async function testAccountLikesBack(prisma: PrismaClient, swiperId: string, targetId: string, subjectId: string): Promise<boolean> {
+  const [{ side: me }, enrollment] = await Promise.all([
+    loadMatchSide(prisma, swiperId, subjectId),
+    prisma.userSubject.findUnique({ where: { userId_subjectId: { userId: targetId, subjectId } }, include: candidateInclude }),
+  ]);
+  if (!enrollment) return false;
+  const slots = await freeSlotsFor(prisma, [swiperId, targetId]);
+  const candidate = scoreUserCandidate(me, slots.get(swiperId) ?? [], enrollment, slots.get(targetId) ?? [], subjectId);
+  return candidate !== null && pairRoll(swiperId, targetId, subjectId) < likeBackChance(candidate.score.total);
+}
+
 
 export async function getCandidates(
   prisma: PrismaClient,
@@ -42,33 +194,16 @@ export async function getCandidates(
   const { subjectId, kind, limit } = query;
 
   // 1. Fetch current user context
-  const currentUser = await prisma.user.findUnique({
-    where: { id: currentUserId },
-    include: {
-      preferences: true,
-      subjects: { where: { subjectId } },
-      interests: { include: { interest: true } },
-      memberships: { select: { groupId: true } },
-    },
-  });
-
-  if (!currentUser) {
-    throw notFound('User not found');
-  }
-
-  const myRole = (currentUser.subjects[0]?.role ?? 'PEER') as RoleTag;
-  const myMaxDistance = currentUser.preferences?.maxDistanceKm ?? 5;
-  const myMode = currentUser.preferences?.mode ?? 'EITHER';
-  const myGroupRange: [number, number] = [
-    currentUser.preferences?.groupSizeMin ?? 2,
-    currentUser.preferences?.groupSizeMax ?? 4,
-  ];
-  const mySessionLength = currentUser.preferences?.sessionLengthMinutes ?? 90;
-  const myInterestSlugs = currentUser.interests.map((i) => i.interest.slug);
-  const myPoint =
-    currentUser.homeLat !== null && currentUser.homeLng !== null
-      ? { lat: currentUser.homeLat, lng: currentUser.homeLng }
-      : null;
+  const { user: currentUser, side: me } = await loadMatchSide(prisma, currentUserId, subjectId);
+  const {
+    role: myRole,
+    maxDistanceKm: myMaxDistance,
+    mode: myMode,
+    groupRange: myGroupRange,
+    sessionLengthMinutes: mySessionLength,
+    interestSlugs: myInterestSlugs,
+    point: myPoint,
+  } = me;
 
   // 2. Swipes in the last 14 days
   const fourteenDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
@@ -101,14 +236,7 @@ export async function getCandidates(
         subjectId,
         userId: { notIn: Array.from(excludedUserIds) },
       },
-      include: {
-        user: {
-          include: {
-            preferences: true,
-            interests: { include: { interest: true } },
-          },
-        },
-      },
+      include: candidateInclude,
       take: 200,
     });
 
@@ -118,86 +246,8 @@ export async function getCandidates(
     const candidates = [];
 
     for (const enrollment of candidateEnrollments) {
-      const candidateUser = enrollment.user;
-      const candPrefs = candidateUser.preferences;
-      const candMode = candPrefs?.mode ?? 'EITHER';
-      const candMaxDistance = candPrefs?.maxDistanceKm ?? 5;
-      const candGroupRange: [number, number] = [candPrefs?.groupSizeMin ?? 2, candPrefs?.groupSizeMax ?? 4];
-
-      const candPoint =
-        candidateUser.homeLat !== null && candidateUser.homeLng !== null
-          ? { lat: candidateUser.homeLat, lng: candidateUser.homeLng }
-          : null;
-
-      const isOnline = myMode === 'ONLINE' || candMode === 'ONLINE';
-
-      let distanceKm: number | null = null;
-      if (myPoint && candPoint) {
-        distanceKm = haversineDistance(myPoint, candPoint);
-      }
-
-      const effectiveMaxDistance = Math.min(myMaxDistance, candMaxDistance);
-
-      // Hard filter: distance if both are IN_PERSON only
-      if (!isOnline && myMode === 'IN_PERSON' && candMode === 'IN_PERSON') {
-        if (distanceKm === null || distanceKm > effectiveMaxDistance) {
-          continue; // Filter out
-        }
-      }
-
-      // Shared free slots
-      const candFreeSlots = freeSlots.get(candidateUser.id) ?? [];
-      const sharedTimeSlots = intersectSlots(myFreeSlots, candFreeSlots, 30);
-      const overlappingMinutes = sharedTimeSlots.reduce((acc, slot) => {
-        return acc + (slot.end.getTime() - slot.start.getTime()) / (60 * 1000);
-      }, 0);
-
-      const candInterestSlugs = candidateUser.interests.map((i) => i.interest.slug);
-
-      // Calculate score breakdown
-      const scoreBreakdown = score({
-        overlappingFreeMinutes: overlappingMinutes,
-        sessionLengthMinutes: mySessionLength,
-        myRole,
-        candidateRole: enrollment.role,
-        myInterests: myInterestSlugs,
-        candidateInterests: candInterestSlugs,
-        distanceKm,
-        maxDistanceKm: effectiveMaxDistance,
-        isOnline,
-        myGroupRange,
-        candidateGroupRange: candGroupRange,
-      });
-
-      // Find shared interests objects
-      const sharedInterests = candidateUser.interests
-        .filter((ci) => myInterestSlugs.includes(ci.interest.slug))
-        .map((ci) => ({
-          id: ci.interest.id,
-          slug: ci.interest.slug,
-          label: ci.interest.label,
-        }));
-
-      candidates.push({
-        kind: 'user' as const,
-        id: candidateUser.id,
-        subjectId,
-        user: {
-          id: candidateUser.id,
-          displayName: candidateUser.displayName,
-          avatarUrl: candidateUser.avatarUrl,
-          faculty: candidateUser.faculty,
-          bio: candidateUser.bio,
-        },
-        role: enrollment.role,
-        distanceKm,
-        sharedInterests,
-        sharedSlots: sharedTimeSlots.slice(0, 5).map((s) => ({
-          start: s.start.toISOString(),
-          end: s.end.toISOString(),
-        })),
-        score: scoreBreakdown,
-      });
+      const candidate = scoreUserCandidate(me, myFreeSlots, enrollment, freeSlots.get(enrollment.user.id) ?? [], subjectId);
+      if (candidate) candidates.push(candidate);
     }
 
     // Rank by total score descending
@@ -385,6 +435,13 @@ export async function swipe(
       throw notFound('User not found', 'NOT_FOUND');
     }
 
+    // scored before the transaction to keep it short
+    const alreadyLiked = await prisma.swipe.findFirst({
+      where: { swiperId: targetId, targetKind: 'user', targetId: currentUserId, subjectId, direction: 'LIKE' },
+      select: { id: true },
+    });
+    const likesBack = !alreadyLiked && targetUser.isSeed && (await testAccountLikesBack(prisma, currentUserId, targetId, subjectId));
+
     return prisma.$transaction(async (tx) => {
       // 1. Record current swipe
       const currentSwipe = await tx.swipe.upsert({
@@ -406,8 +463,8 @@ export async function swipe(
         },
       });
 
-      // 2. Check for reverse LIKE
-      const reverseSwipe = await tx.swipe.findFirst({
+      // 2. Check for reverse LIKE (a test account may answer now)
+      let reverseSwipe = await tx.swipe.findFirst({
         where: {
           swiperId: targetId,
           targetKind: 'user',
@@ -416,6 +473,13 @@ export async function swipe(
           direction: 'LIKE',
         },
       });
+      if (!reverseSwipe && likesBack) {
+        reverseSwipe = await tx.swipe.upsert({
+          where: { swiperId_targetKind_targetId_subjectId: { swiperId: targetId, targetKind: 'user', targetId: currentUserId, subjectId } },
+          update: { direction: 'LIKE', createdAt: new Date() },
+          create: { swiperId: targetId, targetKind: 'user', targetId: currentUserId, subjectId, direction: 'LIKE' },
+        });
+      }
 
       if (!reverseSwipe) {
         return { recorded: true, match: null };
