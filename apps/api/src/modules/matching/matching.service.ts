@@ -33,13 +33,15 @@ function haversineDistance(
   return Math.round(R * c * 10) / 10;
 }
 
+/** Total minutes in a list of slots. */
+const minutesIn = (slots: TimeSlot[]) => slots.reduce((sum, s) => sum + (s.end.getTime() - s.start.getTime()) / 60_000, 0);
+
 /** One side of a match in a subject: what the score needs to know about a user. */
 interface MatchSide {
   role: RoleTag;
   maxDistanceKm: number;
   mode: StudyMode;
   groupRange: [number, number];
-  sessionLengthMinutes: number;
   interestSlugs: string[];
   point: { lat: number; lng: number } | null;
 }
@@ -62,7 +64,6 @@ async function loadMatchSide(prisma: PrismaClient, userId: string, subjectId: st
     maxDistanceKm: user.preferences?.maxDistanceKm ?? 5,
     mode: user.preferences?.mode ?? 'EITHER',
     groupRange: [user.preferences?.groupSizeMin ?? 2, user.preferences?.groupSizeMax ?? 4],
-    sessionLengthMinutes: user.preferences?.sessionLengthMinutes ?? 90,
     interestSlugs: user.interests.map((i) => i.interest.slug),
     point: user.homeLat !== null && user.homeLng !== null ? { lat: user.homeLat, lng: user.homeLng } : null,
   };
@@ -114,7 +115,7 @@ function scoreUserCandidate(me: MatchSide, myFreeSlots: TimeSlot[], enrollment: 
   // Calculate score breakdown
   const scoreBreakdown = score({
     overlappingFreeMinutes: overlappingMinutes,
-    sessionLengthMinutes: me.sessionLengthMinutes,
+    myFreeMinutes: minutesIn(myFreeSlots),
     myRole: me.role,
     candidateRole: enrollment.role,
     myInterests: me.interestSlugs,
@@ -157,8 +158,11 @@ function scoreUserCandidate(me: MatchSide, myFreeSlots: TimeSlot[], enrollment: 
   };
 }
 
-/** Chance that a test account likes you back, from the match score you saw: 80 → ~9 in 10, 60 → ~half, under 40 → 1 in 10. */
-export const likeBackChance = (scoreTotal: number) => Math.min(0.95, Math.max(0.1, (scoreTotal - 30) / 55));
+/**
+ * Chance that a test account likes you back, from the match score you saw: 65+ → ~9 in 10, 50 → 6 in 10,
+ * 40 → 4 in 10, 25 or less → 1 in 10. (Scores mostly sit at 45–75 since shared free time stopped saturating.)
+ */
+export const likeBackChance = (scoreTotal: number) => Math.min(0.95, Math.max(0.1, (scoreTotal - 20) / 50));
 
 /** A fixed number in [0, 1) per (swiper, target, subject), so re-swiping the same card doesn't re-roll. */
 function pairRoll(...ids: string[]): number {
@@ -200,7 +204,6 @@ export async function getCandidates(
     maxDistanceKm: myMaxDistance,
     mode: myMode,
     groupRange: myGroupRange,
-    sessionLengthMinutes: mySessionLength,
     interestSlugs: myInterestSlugs,
     point: myPoint,
   } = me;
@@ -340,7 +343,7 @@ export async function getCandidates(
 
     const scoreBreakdown = score({
       overlappingFreeMinutes: overlappingMinutes,
-      sessionLengthMinutes: mySessionLength,
+      myFreeMinutes: minutesIn(myFreeSlots),
       myRole,
       candidateRole: groupRole,
       myInterests: myInterestSlugs,

@@ -69,7 +69,7 @@ Full schema: `apps/api/prisma/schema/{base,core,integrations}.prisma`.
 
 | Component | Weight | Formula |
 |---|---|---|
-| `timeOverlap` | 0.35 | overlapping free minutes in the next 14 days ÷ (3 × `sessionLengthMinutes`), capped at 1. Uses `AvailabilityService.getFreeSlotsBulk` + `intersectSlots` |
+| `timeOverlap` | 0.35 | overlapping free minutes in the next 14 days ÷ **my** free minutes in those 14 days (how much of my study time they can join), capped at 1. Uses `AvailabilityService.getFreeSlotsBulk` + `intersectSlots`. (Was ÷ 3 × `sessionLengthMinutes`, which saturated at 4.5 h for nearly every pair.) |
 | `roleComplement` | 0.25 | NEEDS_HELP↔CAN_EXPLAIN = 1.0 · PEER↔PEER = 0.7 · PEER↔other = 0.5 · NEEDS_HELP↔NEEDS_HELP = 0.3 · CAN_EXPLAIN↔CAN_EXPLAIN = 0.4 |
 | `interests` | 0.15 | Jaccard(interest sets) |
 | `proximity` | 0.15 | `1 − d / maxDistanceKm` (1.0 when either side is ONLINE-only) |

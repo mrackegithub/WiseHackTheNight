@@ -11,9 +11,9 @@ export interface ScoreBreakdown {
 }
 
 export interface ScoreInputs {
-  // Time overlap
+  // Time overlap: shared free minutes out of my own free minutes (same horizon)
   overlappingFreeMinutes: number;
-  sessionLengthMinutes?: number;
+  myFreeMinutes: number;
 
   // Role complement
   myRole: RoleTag;
@@ -34,11 +34,13 @@ export interface ScoreInputs {
   candidateMemberCount?: number; // for group candidate
 }
 
-export function calculateTimeOverlap(overlappingMinutes: number, sessionLengthMinutes = 90): number {
-  if (overlappingMinutes <= 0) return 0;
-  const target = 3 * (sessionLengthMinutes > 0 ? sessionLengthMinutes : 90);
-  const ratio = overlappingMinutes / target;
-  return Math.min(1, Math.max(0, ratio));
+/**
+ * How much of my free time the candidate is also free: 1 = whenever I can study, they can too.
+ * (A fixed target such as "3 sessions' worth" saturates for nearly every pair over 14 days.)
+ */
+export function calculateTimeOverlap(overlappingMinutes: number, myFreeMinutes: number): number {
+  if (overlappingMinutes <= 0 || myFreeMinutes <= 0) return 0;
+  return Math.min(1, overlappingMinutes / myFreeMinutes);
 }
 
 export function calculateRoleComplement(myRole: RoleTag, candidateRole: RoleTag): number {
@@ -121,7 +123,7 @@ export function score(
   inputs: ScoreInputs,
   weights: MatchingWeights = MATCHING_WEIGHTS,
 ): ScoreBreakdown {
-  const timeOverlap = round(calculateTimeOverlap(inputs.overlappingFreeMinutes, inputs.sessionLengthMinutes));
+  const timeOverlap = round(calculateTimeOverlap(inputs.overlappingFreeMinutes, inputs.myFreeMinutes));
   const roleComplement = round(calculateRoleComplement(inputs.myRole, inputs.candidateRole));
   const interests = round(calculateInterests(inputs.myInterests, inputs.candidateInterests));
   const proximity = round(calculateProximity(inputs.distanceKm, inputs.maxDistanceKm, inputs.isOnline));
