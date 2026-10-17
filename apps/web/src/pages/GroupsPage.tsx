@@ -4,6 +4,7 @@ import { Button } from '../components/form/Button';
 import { QueryError } from '../components/QueryError';
 import { Spinner } from '../components/Spinner';
 import { CreateGroupModal } from '../features/groups/CreateGroupModal';
+import { JoinWithLink } from '../features/groups/JoinWithLink';
 import { useMyGroups } from '../features/groups/queries';
 import { formatSlot, inZone } from '../lib/time';
 import { usePageTitle } from '../hooks/usePageTitle';
@@ -20,6 +21,7 @@ export function GroupsPage() {
         <Button onClick={() => setCreating(true)}>+ New group</Button>
       </header>
       {creating && <CreateGroupModal onClose={() => setCreating(false)} />}
+      <JoinWithLink />
       {groups.isPending ? (
         <Spinner label="Loading your groups" />
       ) : groups.isError ? (
