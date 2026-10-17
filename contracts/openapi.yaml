@@ -395,9 +395,14 @@ paths:
       - { name: eventId, in: path, required: true, schema: { type: string, format: uuid } }
     delete:
       tags: [calendar]
-      operationId: deleteManualEvent
+      operationId: deleteCalendarEvent
       x-owner: integrations
-      description: Deletes one of the user's own MANUAL events. Neptun classes and study sessions can't be deleted here.
+      description: |
+        Removes one event from the user's calendar, whatever its source:
+        - MANUAL: deleted.
+        - NEPTUN: deleted and remembered, so later Neptun syncs don't bring that occurrence back (disconnecting Neptun forgets it).
+        - STUDY_SESSION: the session is cancelled for the whole group (status CANCELLED, removed from every member's
+          calendar, its room booking cancelled).
       responses:
         "204": { description: Deleted }
         "404": { $ref: "#/components/responses/NotFound" }
@@ -682,6 +687,11 @@ paths:
               schema:
                 type: array
                 items: { $ref: "#/components/schemas/GeoPoint" }
+        "502":
+          description: The geocoding provider failed or refused the request (code GEOCODER_UNAVAILABLE)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   /rooms:
     get:
@@ -785,7 +795,7 @@ components:
       properties:
         code:
           type: string
-          description: Stable, UPPER_SNAKE. e.g. VALIDATION_FAILED, UNAUTHORIZED, NOT_FOUND, GROUP_FULL, SLOT_TAKEN, NEPTUN_UNREACHABLE
+          description: Stable, UPPER_SNAKE. e.g. VALIDATION_FAILED, UNAUTHORIZED, NOT_FOUND, GROUP_FULL, SLOT_TAKEN, NEPTUN_UNREACHABLE, GEOCODER_UNAVAILABLE
           example: GROUP_FULL
         message: { type: string }
         details:

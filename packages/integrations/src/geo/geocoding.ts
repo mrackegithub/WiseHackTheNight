@@ -11,6 +11,8 @@ export interface GeocodeOptions {
   cacheTtlMs?: number;
 }
 
+const DEFAULT_USER_AGENT = 'WiseHackTheNight-StudyGroupMatcher/0.1 (+https://github.com/mrackegithub/WiseHackTheNight)';
+
 interface CacheEntry {
   results: GeoPointResult[];
   cachedAt: number;
@@ -50,16 +52,20 @@ export class NominatimGeocoder {
       options.baseUrl ||
       process.env.GEOCODER_URL ||
       'https://nominatim.openstreetmap.org';
+    // Nominatim answers 403 to the .env.example placeholder ("your-email@example.com"), so ignore it
+    const envUserAgent = process.env.GEOCODER_USER_AGENT;
     const userAgent =
       options.userAgent ||
-      process.env.GEOCODER_USER_AGENT ||
-      'study-group-matcher-dev (study-group-matcher@local.dev)';
+      (envUserAgent && !envUserAgent.includes('example.com') ? envUserAgent : undefined) ||
+      DEFAULT_USER_AGENT;
     const customFetch = options.fetcher ?? fetch;
 
     const url = new URL('/search', baseUrl);
     url.searchParams.set('q', q);
     url.searchParams.set('format', 'json');
     url.searchParams.set('limit', '5');
+    url.searchParams.set('countrycodes', 'hu'); // the app is Budapest-only
+    url.searchParams.set('accept-language', 'en');
 
     const res = await customFetch(url.toString(), {
       headers: {

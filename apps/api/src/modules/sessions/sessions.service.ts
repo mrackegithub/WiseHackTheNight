@@ -1,6 +1,18 @@
 import type { PrismaClient } from '@prisma/client';
 import { conflict, forbidden, notFound, validationError } from '../../core/errors.js';
+import { cancelBooking } from '../integrations/rooms/rooms.service.js';
 import type { CreateSessionInput } from './sessions.schemas.js';
+
+/** Cancels a session for the whole group: frees every member's calendar and releases its room booking. */
+export async function cancelStudySession(prisma: PrismaClient, sessionId: string): Promise<void> {
+  const session = await prisma.studySession.findUnique({ where: { id: sessionId } });
+  if (!session) throw notFound('Session not found');
+  await prisma.$transaction([
+    prisma.studySession.update({ where: { id: sessionId }, data: { status: 'CANCELLED' } }),
+    prisma.calendarEvent.deleteMany({ where: { source: 'STUDY_SESSION', externalUid: sessionId } }),
+  ]);
+  if (session.bookingId) await cancelBooking(prisma, session.bookingId);
+}
 
 export async function listGroupSessions(prisma: PrismaClient, groupId: string) {
   const group = await prisma.group.findUnique({ where: { id: groupId } });

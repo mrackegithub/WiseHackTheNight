@@ -254,8 +254,14 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** @description Deletes one of the user's own MANUAL events. Neptun classes and study sessions can't be deleted here. */
-        delete: operations["deleteManualEvent"];
+        /**
+         * @description Removes one event from the user's calendar, whatever its source:
+         *     - MANUAL: deleted.
+         *     - NEPTUN: deleted and remembered, so later Neptun syncs don't bring that occurrence back (disconnecting Neptun forgets it).
+         *     - STUDY_SESSION: the session is cancelled for the whole group (status CANCELLED, removed from every member's
+         *       calendar, its room booking cancelled).
+         */
+        delete: operations["deleteCalendarEvent"];
         options?: never;
         head?: never;
         patch?: never;
@@ -526,7 +532,7 @@ export interface components {
     schemas: {
         Error: {
             /**
-             * @description Stable, UPPER_SNAKE. e.g. VALIDATION_FAILED, UNAUTHORIZED, NOT_FOUND, GROUP_FULL, SLOT_TAKEN, NEPTUN_UNREACHABLE
+             * @description Stable, UPPER_SNAKE. e.g. VALIDATION_FAILED, UNAUTHORIZED, NOT_FOUND, GROUP_FULL, SLOT_TAKEN, NEPTUN_UNREACHABLE, GEOCODER_UNAVAILABLE
              * @example GROUP_FULL
              */
             code: string;
@@ -1439,7 +1445,7 @@ export interface operations {
             422: components["responses"]["ValidationError"];
         };
     };
-    deleteManualEvent: {
+    deleteCalendarEvent: {
         parameters: {
             query?: never;
             header?: never;
@@ -1853,6 +1859,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["GeoPoint"][];
+                };
+            };
+            /** @description The geocoding provider failed or refused the request (code GEOCODER_UNAVAILABLE) */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
                 };
             };
         };

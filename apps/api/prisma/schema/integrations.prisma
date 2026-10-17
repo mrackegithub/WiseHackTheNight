@@ -69,6 +69,15 @@ model CalendarEvent {
   @@index([userId, start, end])
 }
 
+// Neptun occurrences the user removed from their calendar; re-syncs skip them
+model RemovedNeptunEvent {
+  userId      String @db.Uuid
+  externalUid String
+  user        User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, externalUid])
+}
+
 model AvailabilityWindow {
   id        String @id @default(uuid()) @db.Uuid
   userId    String @db.Uuid

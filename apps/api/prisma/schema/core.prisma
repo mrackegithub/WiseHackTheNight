@@ -52,6 +52,7 @@ model User {
   // ── integration back-relations (models live in integrations.prisma) ──
   neptunConnection    NeptunConnection?
   calendarEvents      CalendarEvent[]
+  removedNeptunEvents RemovedNeptunEvent[]
   availabilityWindows AvailabilityWindow[]
   bookingsMade        Booking[]
 
