@@ -8,6 +8,7 @@ import {
 } from '@sgm/integrations';
 import type { paths } from '@sgm/contracts';
 import { notFound } from '../../../core/errors.js';
+import { cancelStudySession } from '../../sessions/sessions.service.js';
 import type { ManualEventInput, WeeklyWindowInput } from './neptun.schemas.js';
 
 export type CalendarEventResponse =
@@ -84,9 +85,30 @@ export async function createManualEvents(
   return created.map(toEventResponse);
 }
 
-export async function deleteManualEvent(prisma: PrismaClient, userId: string, eventId: string): Promise<void> {
-  const { count } = await prisma.calendarEvent.deleteMany({ where: { id: eventId, userId, source: 'MANUAL' } });
-  if (count === 0) throw notFound('Busy time not found');
+/**
+ * Removes any event from the user's calendar. A Neptun class is remembered so re-syncs don't bring it back;
+ * a study session is cancelled for the whole group.
+ */
+export async function deleteCalendarEvent(prisma: PrismaClient, userId: string, eventId: string): Promise<void> {
+  const event = await prisma.calendarEvent.findFirst({ where: { id: eventId, userId } });
+  if (!event) throw notFound('Event not found');
+
+  if (event.source === 'STUDY_SESSION' && event.externalUid) {
+    await cancelStudySession(prisma, event.externalUid);
+    return;
+  }
+  await prisma.$transaction([
+    prisma.calendarEvent.delete({ where: { id: event.id } }),
+    ...(event.source === 'NEPTUN' && event.externalUid
+      ? [
+          prisma.removedNeptunEvent.upsert({
+            where: { userId_externalUid: { userId, externalUid: event.externalUid } },
+            create: { userId, externalUid: event.externalUid },
+            update: {},
+          }),
+        ]
+      : []),
+  ]);
 }
 
 export async function getMyAvailability(

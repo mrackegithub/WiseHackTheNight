@@ -30,6 +30,8 @@ export function LocationStep({ onNext, onBack }: StepProps) {
     queryFn: () => unwrap(api.GET('/locations/geocode', { params: { query: { q: submitted } } })),
     enabled: submitted.length >= 3,
     staleTime: Infinity,
+    retry: false, // the provider allows 1 request/s; shown inline below instead of a toast
+    meta: { silent: true },
   });
 
   const save = useMutation({
@@ -91,6 +93,11 @@ export function LocationStep({ onNext, onBack }: StepProps) {
             Search
           </Button>
         </div>
+        {submitted && results.isError && (
+          <p role="alert" className="text-sm text-red-700">
+            {messageForError(results.error)}
+          </p>
+        )}
         {submitted && results.data && (
           <ul aria-label="Address results" className="divide-y divide-slate-100 rounded-md border border-slate-200 bg-white text-sm">
             {results.data.length === 0 && <li className="px-3 py-2 text-slate-500">No places found. Try another search or use the map.</li>}

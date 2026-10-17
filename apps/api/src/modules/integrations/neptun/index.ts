@@ -128,13 +128,13 @@ const neptunRoutes: FastifyPluginAsync = async (app) => {
     },
   );
 
-  // DELETE /me/schedule/:eventId (own MANUAL events only)
+  // DELETE /me/schedule/:eventId (any of the user's own events)
   app.delete(
     '/me/schedule/:eventId',
     { preHandler: [app.authenticate] },
     async (req, reply) => {
       const { eventId } = validate(eventIdParamsSchema, req.params);
-      await availabilityService.deleteManualEvent(app.prisma, req.user.sub, eventId);
+      await availabilityService.deleteCalendarEvent(app.prisma, req.user.sub, eventId);
       return reply.code(204).send();
     },
   );
