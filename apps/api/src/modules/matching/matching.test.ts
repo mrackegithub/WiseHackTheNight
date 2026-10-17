@@ -32,7 +32,7 @@ describe('B6: Matching Candidates Deck', () => {
     demoUserId = decoded!.sub;
 
     const subject = await app.prisma.subject.findUnique({
-      where: { code: 'IP-18AA1E' },
+      where: { code: 'BME-PROG1' },
     });
     algoSubjectId = subject!.id;
   });

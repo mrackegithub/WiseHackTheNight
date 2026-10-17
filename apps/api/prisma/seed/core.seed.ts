@@ -10,48 +10,18 @@ export interface CoreSeedResult {
 
 const BUDAPEST_CENTER = { lat: 47.4979, lng: 19.0402 };
 
-// 40 Realistic university subjects (BME / ELTE style)
+// The only subjects in the catalogue and the only ones test accounts take (first semester, BME VIK).
+// Aliases are the names Neptun timetables use, so a connected Neptun calendar links to these.
 const SUBJECTS_DATA = [
-  { code: 'IP-18AA1E', name: 'Algorithms and Data Structures I', credits: 5 },
-  { code: 'IP-18AA2E', name: 'Algorithms and Data Structures II', credits: 5 },
-  { code: 'IP-18PROGE', name: 'Programming Languages (C++)', credits: 6 },
-  { code: 'IP-18PROG2E', name: 'Object-Oriented Programming (Java)', credits: 6 },
-  { code: 'IP-18WEBE', name: 'Web Development', credits: 4 },
-  { code: 'IP-18DB1E', name: 'Database Systems I', credits: 5 },
-  { code: 'IP-18DB2E', name: 'Database Systems II', credits: 4 },
-  { code: 'IP-18OS1E', name: 'Operating Systems', credits: 5 },
-  { code: 'IP-18NET1E', name: 'Computer Networks', credits: 4 },
-  { code: 'IP-18AIE', name: 'Artificial Intelligence Foundations', credits: 5 },
-  { code: 'IP-18MLE', name: 'Machine Learning', credits: 6 },
-  { code: 'IP-18SE1E', name: 'Software Engineering', credits: 5 },
-  { code: 'IP-18COMP1E', name: 'Theory of Computation', credits: 5 },
-  { code: 'IP-18LOGE', name: 'Mathematical Logic in Computer Science', credits: 4 },
-  { code: 'BMETE90AX00', name: 'Calculus I', credits: 6 },
-  { code: 'BMETE90AX02', name: 'Calculus II', credits: 6 },
-  { code: 'BMETE90AX21', name: 'Linear Algebra', credits: 4 },
-  { code: 'BMETE90AX22', name: 'Probability and Statistics', credits: 4 },
-  { code: 'BMETE90AX23', name: 'Discrete Mathematics I', credits: 5 },
-  { code: 'BMETE90AX24', name: 'Discrete Mathematics II', credits: 5 },
-  { code: 'BMEVIAUA000', name: 'Digital Design and Microcontrollers', credits: 5 },
-  { code: 'BMEVIAUA001', name: 'Signals and Systems', credits: 5 },
-  { code: 'BMEVIAUA002', name: 'Computer Architecture', credits: 4 },
-  { code: 'BMEVITMA001', name: 'Distributed Systems', credits: 5 },
-  { code: 'BMEVITMA002', name: 'Cloud Computing and Microservices', credits: 4 },
-  { code: 'BMEVITMA003', name: 'Mobile Application Development', credits: 4 },
-  { code: 'BMEVITMA004', name: 'Cybersecurity Principles', credits: 5 },
-  { code: 'BMEVITMA005', name: 'Cryptography', credits: 4 },
-  { code: 'BMEGT41A001', name: 'Microeconomics', credits: 3 },
-  { code: 'BMEGT41A002', name: 'Management and Business Economics', credits: 3 },
-  { code: 'BMEGT43A001', name: 'Project Management', credits: 3 },
-  { code: 'BMEGT43A002', name: 'Engineering Ethics and Law', credits: 2 },
-  { code: 'ELTE-FIZ1', name: 'Mechanics and Thermodynamics', credits: 5 },
-  { code: 'ELTE-FIZ2', name: 'Electromagnetism and Optics', credits: 5 },
-  { code: 'ELTE-BIO1', name: 'Bioinformatics Fundamentals', credits: 4 },
-  { code: 'ELTE-NUM1', name: 'Numerical Analysis', credits: 4 },
-  { code: 'ELTE-GRAF1', name: 'Graph Theory Applications', credits: 4 },
-  { code: 'CORV-FIN1', name: 'Corporate Finance for Engineers', credits: 3 },
-  { code: 'CORV-DATA1', name: 'Data Visualization and Business Intelligence', credits: 4 },
-  { code: 'CORV-ENT1', name: 'Tech Entrepreneurship', credits: 3 },
+  { code: 'BME-CALC1', name: 'Calculus 1', aliases: ['Analízis 1 informatikusoknak', 'Analízis 1', 'Calculus 1 for Informaticians', 'Calculus I'] },
+  {
+    code: 'BME-ITC1',
+    name: 'Introduction to Theory of Computing',
+    aliases: ['Bevezetés a számításelméletbe 1', 'Bevezetés a számításelméletbe', 'Introduction to the Theory of Computing 1', 'Introduction to the Theory of Computing'],
+  },
+  { code: 'BME-DIGIT1', name: 'Digital Design', aliases: ['Digitális technika', 'Digitális technika 1', 'Digital Design 1'] },
+  { code: 'BME-EE1', name: 'Basics of Electrical Engineering', aliases: ['Villamos alapismeretek', 'Basics of Electrical Engineering 1'] },
+  { code: 'BME-PROG1', name: 'Basics of Programming', aliases: ['A programozás alapjai 1', 'A programozás alapjai', 'Basics of Programming 1'] },
 ];
 
 // 25 Interest tags
@@ -103,22 +73,25 @@ export async function seedCore(prisma: PrismaClient): Promise<CoreSeedResult> {
   await prisma.groupMember.deleteMany();
   await prisma.studySession.deleteMany();
   await prisma.group.deleteMany();
-  await prisma.userSubject.deleteMany();
-  await prisma.userInterest.deleteMany();
-  await prisma.refreshToken.deleteMany();
-  await prisma.preferences.deleteMany();
+  // test accounts only: real users keep their profile, interests and logins across re-seeds
+  const seedOnly = { where: { user: { isSeed: true } } };
+  await prisma.userSubject.deleteMany(seedOnly);
+  await prisma.userInterest.deleteMany(seedOnly);
+  await prisma.refreshToken.deleteMany(seedOnly);
+  await prisma.preferences.deleteMany(seedOnly);
   await prisma.user.deleteMany({ where: { isSeed: true } });
 
-  // 2. Seed Subjects
+  // 2. Seed Subjects (and drop every other subject, so the catalogue is exactly SUBJECTS_DATA)
   const createdSubjects = [];
   for (const s of SUBJECTS_DATA) {
     const subj = await prisma.subject.upsert({
       where: { code: s.code },
-      update: { name: s.name, credits: s.credits },
+      update: { name: s.name, aliases: s.aliases },
       create: s,
     });
     createdSubjects.push(subj);
   }
+  await prisma.subject.deleteMany({ where: { code: { notIn: SUBJECTS_DATA.map((s) => s.code) } } });
   const subjectIds = createdSubjects.map((s) => s.id);
 
   // 3. Seed Interests
@@ -141,7 +114,7 @@ export async function seedCore(prisma: PrismaClient): Promise<CoreSeedResult> {
       email: 'demo@sgm.local',
       passwordHash,
       displayName: 'Demo Student',
-      bio: 'BME Computer Science student looking for study groups in Algorithms and Calculus.',
+      bio: 'BME Computer Engineering student looking for study groups in Basics of Programming and Calculus 1.',
       avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=250',
       university: 'Budapest University of Technology and Economics (BME)',
       faculty: 'Faculty of Electrical Engineering and Informatics (VIK)',
@@ -163,16 +136,16 @@ export async function seedCore(prisma: PrismaClient): Promise<CoreSeedResult> {
     },
   });
 
-  // Attach demo subjects: Algorithms (CAN_EXPLAIN) & Calculus (NEEDS_HELP)
-  const algoSubject = createdSubjects.find((s) => s.code === 'IP-18AA1E')!;
-  const calcSubject = createdSubjects.find((s) => s.code === 'BMETE90AX00')!;
-  const dbSubject = createdSubjects.find((s) => s.code === 'IP-18DB1E')!;
+  // Attach demo subjects (all five): Programming (CAN_EXPLAIN), Calculus (NEEDS_HELP), the rest PEER
+  const progSubject = createdSubjects.find((s) => s.code === 'BME-PROG1')!;
+  const calcSubject = createdSubjects.find((s) => s.code === 'BME-CALC1')!;
+  const otherSubjects = createdSubjects.filter((s) => s !== progSubject && s !== calcSubject);
 
   await prisma.userSubject.createMany({
     data: [
-      { userId: demoUser.id, subjectId: algoSubject.id, role: 'CAN_EXPLAIN' as RoleTag, confidence: 5 },
+      { userId: demoUser.id, subjectId: progSubject.id, role: 'CAN_EXPLAIN' as RoleTag, confidence: 5 },
       { userId: demoUser.id, subjectId: calcSubject.id, role: 'NEEDS_HELP' as RoleTag, confidence: 2 },
-      { userId: demoUser.id, subjectId: dbSubject.id, role: 'PEER' as RoleTag, confidence: 3 },
+      ...otherSubjects.map((s) => ({ userId: demoUser.id, subjectId: s.id, role: 'PEER' as RoleTag, confidence: 3 })),
     ],
   });
 
@@ -235,17 +208,17 @@ export async function seedCore(prisma: PrismaClient): Promise<CoreSeedResult> {
 
     userIds.push(user.id);
 
-    // Pick 2-5 random subjects
-    // Make sure the first 20 users share subjects with demoUser to guarantee great match scores
+    // Pick 2-5 of the five subjects
+    // Make sure the first 24 users share subjects with demoUser to guarantee great match scores
     const userSubjs = i < 25
-      ? [algoSubject, calcSubject, ...faker.helpers.arrayElements(createdSubjects, { min: 1, max: 2 })]
+      ? [progSubject, calcSubject, ...faker.helpers.arrayElements(otherSubjects, { min: 1, max: 2 })]
       : faker.helpers.arrayElements(createdSubjects, { min: 2, max: 5 });
 
-    // Complementary role for the first 10 users: NEEDS_HELP in Algo (demo is CAN_EXPLAIN), CAN_EXPLAIN in Calc (demo is NEEDS_HELP)
+    // Complementary role for the first 11 users: NEEDS_HELP in Programming (demo is CAN_EXPLAIN), CAN_EXPLAIN in Calc (demo is NEEDS_HELP)
     await prisma.userSubject.createMany({
       data: userSubjs.map((s) => {
         let role: RoleTag;
-        if (i < 12 && s.id === algoSubject.id) {
+        if (i < 12 && s.id === progSubject.id) {
           role = 'NEEDS_HELP';
         } else if (i < 12 && s.id === calcSubject.id) {
           role = 'CAN_EXPLAIN';
@@ -278,37 +251,38 @@ export async function seedCore(prisma: PrismaClient): Promise<CoreSeedResult> {
 
   // 7. Seed 30 Groups
   const groupIds: string[] = [];
+  // Group i studies createdSubjects[i % 5]: Calculus, Theory of Computing, Digital Design, Electrical Eng., Programming
   const groupNames = [
-    'Algorithms Cram Session',
-    'Data Structures Study Pod',
     'Calculus Problem Solvers',
-    'Web Dev Hackers',
-    'Distributed Systems Crew',
-    'AI / ML Paper Club',
-    'Database Optimizers',
-    'Operating Systems Kernel Gang',
-    'Discrete Math Working Group',
-    'Linear Algebra Study Group',
-    'Signals & Systems Prep',
+    'Theory of Computing Proof Club',
     'Digital Design Lab Study',
-    'Networks & Protocols',
-    'BME VIK Exam Sprint',
-    'ELTE CS Peer Study',
-    'Corvinus Data Analytics Pod',
-    'Software Architecture Discussion',
-    'Sunday Morning Study Circle',
-    'Night Owls Study Group',
-    'Library Silence Squad',
-    'Calculus II Rescue Team',
-    'Compiler & Automata Crew',
-    'BME Stoczek Study Room',
-    'Clean Code & Best Practices',
-    'Cybersecurity CTF Team',
-    'Cloud Native Builders',
-    'Mobile Dev Project Pod',
-    'Probability Theory Study',
-    'Microeconomics Reviewers',
+    'Circuit Analysis Crew',
+    'C Programming Cram Session',
+    'Limits & Derivatives Drill',
+    'Graphs & Combinatorics Pod',
+    'Logic Gates Gang',
+    'Electrical Engineering Exam Sprint',
+    'Pointers & Linked Lists Pod',
+    'Integrals Night Owls',
+    'Number Theory Study Group',
+    'Karnaugh Map Masters',
+    'Kirchhoff Study Circle',
+    'Programming Homework Help',
+    'Calculus Midterm Rescue Team',
+    'Theory of Computing Exam Prep',
+    'Sequential Circuits Workshop',
+    'EE Lab Report Writers',
     'Competitive Coders Budapest',
+    'Sunday Morning Calculus Circle',
+    'Proof Writing Practice',
+    'Digital Design Exam Sprint',
+    'Library Silence Squad (EE)',
+    'Clean Code Beginners',
+    'Series & Sequences Squad',
+    'BSZ Practice Sheets',
+    'State Machines Study Pod',
+    'Basics of EE Peer Study',
+    'BME Stoczek Coding Room',
   ];
 
   for (let i = 0; i < 30; i++) {
@@ -372,15 +346,15 @@ export async function seedCore(prisma: PrismaClient): Promise<CoreSeedResult> {
   }
 
   // 8. Seed Swipes and Matches
-  // Create guaranteed matches for demo user with users 1, 2, 3 in Algorithms and Calculus
+  // Create guaranteed matches for demo user with users 1, 2, 3 in Programming and Calculus
   const demoMatchPartner1 = userIds[1];
   const demoMatchPartner2 = userIds[2];
 
-  // Swipes for demo user and partner 1 on Algorithms
+  // Swipes for demo user and partner 1 on Programming
   await prisma.swipe.createMany({
     data: [
-      { swiperId: demoUser.id, targetKind: 'user', targetId: demoMatchPartner1, subjectId: algoSubject.id, direction: 'LIKE' },
-      { swiperId: demoMatchPartner1, targetKind: 'user', targetId: demoUser.id, subjectId: algoSubject.id, direction: 'LIKE' },
+      { swiperId: demoUser.id, targetKind: 'user', targetId: demoMatchPartner1, subjectId: progSubject.id, direction: 'LIKE' },
+      { swiperId: demoMatchPartner1, targetKind: 'user', targetId: demoUser.id, subjectId: progSubject.id, direction: 'LIKE' },
     ],
   });
 
@@ -388,7 +362,7 @@ export async function seedCore(prisma: PrismaClient): Promise<CoreSeedResult> {
   const matchGroup1 = await prisma.group.create({
     data: {
       name: `${demoUser.displayName} & Partner Study Pod`,
-      subjectId: algoSubject.id,
+      subjectId: progSubject.id,
       maxSize: 4,
       isOpen: true,
       members: {
@@ -403,7 +377,7 @@ export async function seedCore(prisma: PrismaClient): Promise<CoreSeedResult> {
   await prisma.match.create({
     data: {
       groupId: matchGroup1.id,
-      subjectId: algoSubject.id,
+      subjectId: progSubject.id,
       userAId: demoUser.id,
       userBId: demoMatchPartner1,
     },
@@ -481,11 +455,11 @@ export async function seedCore(prisma: PrismaClient): Promise<CoreSeedResult> {
   }
 
   // Pending likes: top-ranked classmates (complementary roles, users 3–14) already liked the demo user in
-  // Algorithms and Calculus, so swiping right on them in the deck produces the "It's a match!" moment.
+  // Programming and Calculus, so swiping right on them in the deck produces the "It's a match!" moment.
   // (The matches above are already complete, so without these the demo deck never matches.)
   await prisma.swipe.createMany({
     data: userIds.slice(3, 15).flatMap((swiperId) =>
-      [algoSubject.id, calcSubject.id].map((subjectId) => ({
+      [progSubject.id, calcSubject.id].map((subjectId) => ({
         swiperId,
         targetKind: 'user',
         targetId: demoUser.id,

@@ -1,12 +1,15 @@
 import type { PrismaClient } from '@prisma/client';
 import {
+  courseFromTitle,
   decryptUrl,
   encryptUrl,
   fetchIcs,
   normalizeCalendarUrl,
+  normalizeCourseName,
   parseIcs,
   validateSafeUrl,
   type ParsedCalendarEvent,
+  type TimetableCourse,
 } from '@sgm/integrations';
 import type { paths } from '@sgm/contracts';
 import { conflict, validationError } from '../../../core/errors.js';
@@ -210,7 +213,7 @@ export async function applyIcsData(
   userId: string,
   icsText: string,
 ): Promise<SyncResultResponse> {
-  const allSubjects = await prisma.subject.findMany({ select: { id: true, code: true } });
+  const allSubjects = await prisma.subject.findMany({ select: { id: true, code: true, name: true, aliases: true } });
   const knownSubjectCodes = allSubjects.map((s) => s.code);
 
   const parsedEvents: ParsedCalendarEvent[] = parseIcs(icsText, {
@@ -289,15 +292,33 @@ export async function applyIcsData(
       removedCount = delRes.count;
     }
 
-    // Subject linking: link detected course codes to /me/subjects as PEER
+    // Subject linking: every course in the timetable becomes one of the user's subjects (PEER), so it shows in Discover
     const detectedCodes = new Set<string>();
+    const courses = new Map<string, TimetableCourse>(); // by normalized name
     for (const ev of parsedEvents) {
       if (ev.subjectCode) {
         detectedCodes.add(ev.subjectCode.toUpperCase());
       }
+      const course = courseFromTitle(ev.title);
+      if (course) courses.set(normalizeCourseName(course.name), course);
     }
 
-    const matchingSubjects = allSubjects.filter((s) => detectedCodes.has(s.code.toUpperCase()));
+    const subjectIds = new Set(allSubjects.filter((s) => detectedCodes.has(s.code.toUpperCase())).map((s) => s.id));
+    // Neptun titles rarely carry the code, so match the course name against subject names and aliases
+    // (e.g. "Analízis 1 informatikusoknak" → Calculus 1); courses not in the catalogue yet are added to it
+    const byCode = new Map(allSubjects.map((s) => [s.code.toUpperCase(), s.id]));
+    const byName = new Map(allSubjects.flatMap((s) => [s.name, ...s.aliases].map((n) => [normalizeCourseName(n), s.id] as const)));
+    for (const [key, course] of courses) {
+      const known = (course.code && byCode.get(course.code)) || byName.get(key);
+      if (known) {
+        subjectIds.add(known);
+        continue;
+      }
+      const code = course.code || `NEPTUN-${key.toUpperCase().replace(/ /g, '-').slice(0, 40)}`;
+      const created = await tx.subject.upsert({ where: { code }, update: {}, create: { code, name: course.name } });
+      subjectIds.add(created.id);
+    }
+
     const existingUserSubjects = await tx.userSubject.findMany({
       where: { userId },
       select: { subjectId: true },
@@ -305,12 +326,12 @@ export async function applyIcsData(
     const existingSubjectIds = new Set(existingUserSubjects.map((us) => us.subjectId));
 
     let subjectsLinked = 0;
-    for (const subj of matchingSubjects) {
-      if (!existingSubjectIds.has(subj.id)) {
+    for (const subjectId of subjectIds) {
+      if (!existingSubjectIds.has(subjectId)) {
         await tx.userSubject.create({
           data: {
             userId,
-            subjectId: subj.id,
+            subjectId,
             role: 'PEER',
             confidence: 3,
           },

@@ -85,8 +85,8 @@ describe('C7: Integration Seed', () => {
 
     expect(demoEvents.length).toBeGreaterThan(0);
     const subjectCodes = new Set(demoEvents.map((e) => e.subjectCode));
-    expect(subjectCodes.has('IP-18AA1E')).toBe(true);
-    expect(subjectCodes.has('BMETE90AX00')).toBe(true);
+    expect(subjectCodes.has('BME-PROG1')).toBe(true);
+    expect(subjectCodes.has('BME-CALC1')).toBe(true);
   });
 
   it('can be re-run idempotently without error', async () => {

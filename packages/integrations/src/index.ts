@@ -36,6 +36,7 @@ export {
   type ParsedCalendarEvent,
   type ParseIcsOptions,
 } from './neptun/parser';
+export { courseFromTitle, normalizeCourseName, type TimetableCourse } from './neptun/courses';
 export { encryptUrl, decryptUrl, getEncryptionKey } from './neptun/crypto';
 export {
   MockBookingProvider,

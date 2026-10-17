@@ -360,9 +360,10 @@ export async function seedIntegrations(
   await prisma.booking.deleteMany();
   await prisma.room.deleteMany();
   await prisma.location.deleteMany();
-  await prisma.calendarEvent.deleteMany({ where: { source: 'NEPTUN' } });
-  await prisma.availabilityWindow.deleteMany();
-  await prisma.neptunConnection.deleteMany();
+  // test accounts only: real users keep their Neptun calendar, link and study hours across re-seeds
+  await prisma.calendarEvent.deleteMany({ where: { source: 'NEPTUN', user: { isSeed: true } } });
+  await prisma.availabilityWindow.deleteMany({ where: { user: { isSeed: true } } });
+  await prisma.neptunConnection.deleteMany({ where: { user: { isSeed: true } } });
 
   // 2. Seed 25 Budapest Locations with Rooms
   for (const loc of BUDAPEST_LOCATIONS) {
@@ -471,10 +472,12 @@ export async function seedIntegrations(
     if (isDemo) {
       // Demo schedule: predictable, leaving afternoons and Friday open
       const demoClasses = [
-        { weekday: 1, periodIdx: 1, code: 'IP-18AA1E', name: 'Algorithms and Data Structures I', room: 'IB 028' },
-        { weekday: 2, periodIdx: 0, code: 'BMETE90AX00', name: 'Calculus I', room: 'Q-II' },
-        { weekday: 3, periodIdx: 3, code: 'IP-18DB1E', name: 'Database Systems I', room: 'I.E.224' },
-        { weekday: 4, periodIdx: 1, code: 'BMETE90AX00', name: 'Calculus I', room: 'K.I.50' },
+        { weekday: 1, periodIdx: 1, code: 'BME-PROG1', name: 'Basics of Programming', room: 'IB 028' },
+        { weekday: 2, periodIdx: 0, code: 'BME-CALC1', name: 'Calculus 1', room: 'Q-II' },
+        { weekday: 2, periodIdx: 1, code: 'BME-DIGIT1', name: 'Digital Design', room: 'IB 025' },
+        { weekday: 3, periodIdx: 0, code: 'BME-EE1', name: 'Basics of Electrical Engineering', room: 'Déli 0-823' },
+        { weekday: 3, periodIdx: 3, code: 'BME-ITC1', name: 'Introduction to Theory of Computing', room: 'I.E.224' },
+        { weekday: 4, periodIdx: 1, code: 'BME-CALC1', name: 'Calculus 1', room: 'K.I.50' },
       ];
 
       for (let week = 0; week < 8; week++) {
