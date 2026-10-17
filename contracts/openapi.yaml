@@ -366,6 +366,41 @@ paths:
               schema:
                 type: array
                 items: { $ref: "#/components/schemas/CalendarEvent" }
+    post:
+      tags: [calendar]
+      operationId: createManualEvents
+      x-owner: integrations
+      description: |
+        Adds a busy block that isn't in Neptun (source MANUAL), e.g. a job, sport or a course without a Neptun feed.
+        With `repeatWeeks` > 0 it is also added at the same local time (Europe/Budapest) on the same weekday for that
+        many following weeks; every copy is a separate event that can be deleted on its own.
+        Busy blocks are subtracted from free time like classes.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ManualEventInput" }
+      responses:
+        "201":
+          description: Created (the first event plus its weekly copies)
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/CalendarEvent" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /me/schedule/{eventId}:
+    parameters:
+      - { name: eventId, in: path, required: true, schema: { type: string, format: uuid } }
+    delete:
+      tags: [calendar]
+      operationId: deleteManualEvent
+      x-owner: integrations
+      description: Deletes one of the user's own MANUAL events. Neptun classes and study sessions can't be deleted here.
+      responses:
+        "204": { description: Deleted }
+        "404": { $ref: "#/components/responses/NotFound" }
 
   /me/availability:
     get:
@@ -922,6 +957,14 @@ components:
         room: { type: [string, "null"] }
         subjectCode: { type: [string, "null"] }
         source: { type: string, enum: [NEPTUN, MANUAL, STUDY_SESSION] }
+    ManualEventInput:
+      type: object
+      required: [title, start, end]
+      properties:
+        title: { type: string, minLength: 1, maxLength: 120, example: "Part-time job" }
+        start: { type: string, format: date-time }
+        end: { type: string, format: date-time, description: "After start, at most 24 h later" }
+        repeatWeeks: { type: integer, minimum: 0, maximum: 16, default: 0, description: "Extra weekly copies" }
     NeptunConnection:
       type: object
       required: [connected, status]

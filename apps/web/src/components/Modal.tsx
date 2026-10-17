@@ -18,16 +18,25 @@ export function Modal({ title, onClose, children, description, size = 'sm' }: Mo
   const titleId = useId();
   const descId = useId();
   const panel = useRef<HTMLDivElement>(null);
+  // Latest onClose without re-running the effect (callers often pass inline functions; re-running would
+  // steal focus back to the first field on every parent render).
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
 
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null;
     const el = panel.current;
     (el?.querySelector<HTMLElement>('[data-autofocus]') ?? el)?.focus();
+    // The page behind must not scroll while the dialog is open (the dialog itself may scroll).
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
 
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape') {
         e.preventDefault();
-        onClose();
+        onCloseRef.current();
       }
       if (e.key === 'Tab' && el) {
         const focusables = [...el.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), input, select, textarea, [tabindex]:not([tabindex="-1"])')];
@@ -46,9 +55,10 @@ export function Modal({ title, onClose, children, description, size = 'sm' }: Mo
     document.addEventListener('keydown', onKey);
     return () => {
       document.removeEventListener('keydown', onKey);
+      document.body.style.overflow = previousOverflow;
       previous?.focus();
     };
-  }, [onClose]);
+  }, []);
 
   return createPortal(
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/50 p-4" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>

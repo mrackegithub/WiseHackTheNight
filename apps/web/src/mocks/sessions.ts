@@ -37,7 +37,7 @@ export function busyMember(group: MockGroup, start: string, end: string): string
   for (const m of group.members) {
     const user = db.users.get(m.userId);
     if (!user) continue;
-    const busy = [...expandTimetable(user.calendar.timetable, from, to), ...sessionEvents(user.me.id, from, to)];
+    const busy = [...expandTimetable(user.calendar.timetable, from, to), ...user.calendar.manualEvents, ...sessionEvents(user.me.id, from, to)];
     if (busy.some((e) => overlaps(e, start, end))) return user.me.displayName;
   }
   return null;

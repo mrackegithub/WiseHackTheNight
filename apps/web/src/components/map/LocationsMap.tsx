@@ -30,7 +30,7 @@ interface LocationsMapProps {
 export default function LocationsMap({ places, selectedId, onSelect }: LocationsMapProps) {
   const center = places[0] ?? { lat: 47.4979, lng: 19.0402 };
   return (
-    <MapContainer center={[center.lat, center.lng]} zoom={14} scrollWheelZoom={false} className="h-64 w-full rounded-lg border border-slate-200">
+    <MapContainer center={[center.lat, center.lng]} zoom={14} scrollWheelZoom={false} className="relative isolate z-0 h-64 w-full rounded-lg border border-slate-200">
       <TileLayer url={config.mapTileUrl} attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' />
       {places.map((p, i) => {
         const selected = p.id === selectedId;

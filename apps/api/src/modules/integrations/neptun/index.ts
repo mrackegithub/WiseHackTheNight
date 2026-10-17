@@ -3,6 +3,8 @@ import type { paths } from '@sgm/contracts';
 import { validate } from '../../../core/validation.js';
 import {
   connectNeptunSchema,
+  eventIdParamsSchema,
+  manualEventSchema,
   replaceAvailabilitySchema,
   scheduleQuerySchema,
 } from './neptun.schemas.js';
@@ -112,6 +114,28 @@ const neptunRoutes: FastifyPluginAsync = async (app) => {
         new Date(from),
         new Date(to),
       );
+    },
+  );
+
+  // POST /me/schedule: manual busy blocks (not from Neptun)
+  app.post(
+    '/me/schedule',
+    { preHandler: [app.authenticate] },
+    async (req, reply): Promise<ScheduleResponse> => {
+      const input = validate(manualEventSchema, req.body);
+      reply.code(201);
+      return availabilityService.createManualEvents(app.prisma, req.user.sub, input);
+    },
+  );
+
+  // DELETE /me/schedule/:eventId (own MANUAL events only)
+  app.delete(
+    '/me/schedule/:eventId',
+    { preHandler: [app.authenticate] },
+    async (req, reply) => {
+      const { eventId } = validate(eventIdParamsSchema, req.params);
+      await availabilityService.deleteManualEvent(app.prisma, req.user.sub, eventId);
+      return reply.code(204).send();
     },
   );
 

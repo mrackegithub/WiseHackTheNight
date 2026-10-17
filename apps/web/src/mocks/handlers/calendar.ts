@@ -2,7 +2,8 @@ import { DateTime } from 'luxon';
 import { http, HttpResponse } from 'msw';
 import type { Schemas } from '@sgm/contracts';
 import { expandTimetable, freeSlots } from '../calendar';
-import type { MockUser } from '../db';
+import { toApiTime, ZONE } from '../../lib/time';
+import { nextId, type MockUser } from '../db';
 import { sessionEvents } from '../sessions';
 import { apiError, authed, url } from '../utils';
 
@@ -16,9 +17,16 @@ function range(request: Request) {
   return { from, to };
 }
 
-/** Classes from Neptun plus planned study sessions of the user's groups. */
+const overlapsRange = (e: { start: string; end: string }, from: DateTime, to: DateTime) =>
+  Date.parse(e.start) < to.toMillis() && Date.parse(e.end) > from.toMillis();
+
+/** Classes from Neptun, the user's own busy blocks, and planned study sessions of their groups. */
 const busyEvents = (user: MockUser, from: DateTime, to: DateTime) =>
-  [...expandTimetable(user.calendar.timetable, from, to), ...sessionEvents(user.me.id, from, to)].sort((a, b) => a.start.localeCompare(b.start));
+  [
+    ...expandTimetable(user.calendar.timetable, from, to),
+    ...user.calendar.manualEvents.filter((e) => overlapsRange(e, from, to)),
+    ...sessionEvents(user.me.id, from, to),
+  ].sort((a, b) => a.start.localeCompare(b.start));
 
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 
@@ -29,6 +37,46 @@ export const calendarHandlers = [
       const r = range(request);
       if (r.error) return r.error;
       return HttpResponse.json<Schemas['CalendarEvent'][]>(busyEvents(user, r.from, r.to));
+    }),
+  ),
+
+  http.post(
+    url('/me/schedule'),
+    authed(async (user, { request }) => {
+      const body = (await request.json()) as Schemas['ManualEventInput'];
+      const start = DateTime.fromISO(body.start ?? '');
+      const end = DateTime.fromISO(body.end ?? '');
+      const repeat = body.repeatWeeks ?? 0;
+      const details: { path: string; issue: string }[] = [];
+      if (!body.title?.trim() || body.title.length > 120) details.push({ path: 'title', issue: 'title is required (max 120)' });
+      if (!start.isValid || !end.isValid || end <= start) details.push({ path: 'end', issue: 'end must be after start' });
+      else if (end.diff(start, 'hours').hours > 24) details.push({ path: 'end', issue: 'a busy block can be at most 24 hours long' });
+      if (!Number.isInteger(repeat) || repeat < 0 || repeat > 16) details.push({ path: 'repeatWeeks', issue: '0–16' });
+      if (details.length) return apiError(422, 'VALIDATION_FAILED', 'Request validation failed', details);
+
+      // weekly copies keep the same Budapest local time across DST, like the real API
+      const [s, e] = [start.setZone(ZONE), end.setZone(ZONE)];
+      const created = Array.from({ length: repeat + 1 }, (_, week): Schemas['CalendarEvent'] => ({
+        id: nextId(),
+        title: body.title.trim(),
+        start: toApiTime(s.plus({ weeks: week })),
+        end: toApiTime(e.plus({ weeks: week })),
+        room: null,
+        subjectCode: null,
+        source: 'MANUAL',
+      }));
+      user.calendar.manualEvents.push(...created);
+      return HttpResponse.json<Schemas['CalendarEvent'][]>(created, { status: 201 });
+    }),
+  ),
+
+  http.delete(
+    url('/me/schedule/:eventId'),
+    authed((user, { params }) => {
+      const before = user.calendar.manualEvents.length;
+      user.calendar.manualEvents = user.calendar.manualEvents.filter((e) => e.id !== params.eventId);
+      if (user.calendar.manualEvents.length === before) return apiError(404, 'NOT_FOUND', 'Busy time not found');
+      return new HttpResponse(null, { status: 204 });
     }),
   ),
 

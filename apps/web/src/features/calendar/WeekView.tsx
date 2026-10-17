@@ -88,7 +88,7 @@ export function WeekView({ weekStart, events, freeSlots }: WeekViewProps) {
                       aria-label={`${ev.title}, ${formatTimeRange(ev.start, ev.end)}${ev.room ? `, ${ev.room}` : ''}`}
                       title={`${ev.title}\n${formatTimeRange(ev.start, ev.end)}${ev.room ? `\n${ev.room}` : ''}`}
                       className={`absolute inset-x-1 overflow-hidden rounded-md px-1.5 py-1 text-[11px] leading-tight shadow-sm ${
-                        ev.source === 'STUDY_SESSION' ? 'bg-amber-500 text-white' : 'bg-indigo-600 text-white'
+                        ev.source === 'STUDY_SESSION' ? 'bg-amber-500 text-white' : ev.source === 'MANUAL' ? 'bg-slate-600 text-white' : 'bg-indigo-600 text-white'
                       }`}
                       style={{ top: b.top, height: b.height }}
                     >
