@@ -31,28 +31,23 @@ describe('B5: Matching Scoring Engine', () => {
   });
 
   describe('calculateTimeOverlap', () => {
-    it('returns 0 when there are no overlapping minutes', () => {
-      expect(calculateTimeOverlap(0, 90)).toBe(0);
-      expect(calculateTimeOverlap(-10, 90)).toBe(0);
+    it('returns 0 when there are no overlapping minutes or I have no free time', () => {
+      expect(calculateTimeOverlap(0, 600)).toBe(0);
+      expect(calculateTimeOverlap(-10, 600)).toBe(0);
+      expect(calculateTimeOverlap(120, 0)).toBe(0);
     });
 
-    it('returns 1.0 when overlapping minutes equals 3x sessionLengthMinutes', () => {
-      // 3 * 90 = 270 minutes
-      expect(calculateTimeOverlap(270, 90)).toBe(1.0);
+    it('returns 1.0 when they are free whenever I am', () => {
+      expect(calculateTimeOverlap(600, 600)).toBe(1.0);
     });
 
-    it('caps score at 1.0 when overlapping minutes exceeds 3x sessionLength', () => {
-      expect(calculateTimeOverlap(500, 90)).toBe(1.0);
+    it('is the share of my free time we have in common', () => {
+      expect(calculateTimeOverlap(300, 600)).toBe(0.5);
+      expect(calculateTimeOverlap(150, 600)).toBe(0.25);
     });
 
-    it('scales linearly between 0 and 1.0', () => {
-      // 135 / 270 = 0.5
-      expect(calculateTimeOverlap(135, 90)).toBe(0.5);
-    });
-
-    it('respects custom sessionLengthMinutes', () => {
-      // 3 * 60 = 180 min target; 90 min overlap -> 0.5
-      expect(calculateTimeOverlap(90, 60)).toBe(0.5);
+    it('caps at 1.0', () => {
+      expect(calculateTimeOverlap(700, 600)).toBe(1.0);
     });
   });
 
@@ -164,7 +159,7 @@ describe('B5: Matching Scoring Engine', () => {
     it('yields 100.0 for a perfect match', () => {
       const result = score({
         overlappingFreeMinutes: 270,
-        sessionLengthMinutes: 90,
+        myFreeMinutes: 270,
         myRole: 'NEEDS_HELP',
         candidateRole: 'CAN_EXPLAIN',
         myInterests: ['exam-prep', 'hackathons'],
@@ -187,7 +182,7 @@ describe('B5: Matching Scoring Engine', () => {
     it('yields 0.0 for a complete mismatch', () => {
       const result = score({
         overlappingFreeMinutes: 0,
-        sessionLengthMinutes: 90,
+        myFreeMinutes: 270,
         myRole: 'NEEDS_HELP',
         candidateRole: 'NEEDS_HELP',
         myInterests: ['exam-prep'],
@@ -211,7 +206,7 @@ describe('B5: Matching Scoring Engine', () => {
     it('evaluates group candidates correctly', () => {
       const result = score({
         overlappingFreeMinutes: 135, // 0.5
-        sessionLengthMinutes: 90,
+        myFreeMinutes: 270,
         myRole: 'PEER',
         candidateRole: 'PEER', // 0.7
         myInterests: ['exam-prep', 'silent-study'],

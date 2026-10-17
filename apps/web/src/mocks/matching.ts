@@ -33,9 +33,10 @@ function myUpcomingFreeSlots(user: MockUser) {
   return freeSlots(user.calendar.windows, expandTimetable(user.calendar.timetable, from, to), from, to, 60);
 }
 
-/** Deterministic stand-in for "intersectSlots(mine, theirs)": each classmate is free in a different subset. */
+/** Deterministic stand-in for "intersectSlots(mine, theirs)": each classmate is free in a different share (30–90 %) of my slots. */
 function sharedWith(mySlots: Schemas['TimeSlot'][], seed: number) {
-  return mySlots.filter((_, k) => (k + seed) % 3 !== 1);
+  const keep = 3 + (seed % 7);
+  return mySlots.filter((_, k) => (k * 7 + seed) % 10 < keep);
 }
 
 function score(parts: Omit<Schemas['ScoreBreakdown'], 'total'>): Schemas['ScoreBreakdown'] {
@@ -53,7 +54,9 @@ export function buildCandidates(user: MockUser, subjectId: string, kind: 'user' 
   const inPerson = prefs.mode === 'IN_PERSON';
   const myInterests = new Set((user.me.interests ?? []).map((i) => i.id));
   const mySlots = myUpcomingFreeSlots(user);
-  const timeOverlap = (slots: Schemas['TimeSlot'][]) => Math.min(1, slots.reduce((m, s) => m + minutes(s), 0) / (3 * prefs.sessionLengthMinutes));
+  // share of my free time we have in common (ARCHITECTURE §4.2)
+  const myFreeMinutes = mySlots.reduce((m, s) => m + minutes(s), 0);
+  const timeOverlap = (slots: Schemas['TimeSlot'][]) => (myFreeMinutes > 0 ? Math.min(1, slots.reduce((m, s) => m + minutes(s), 0) / myFreeMinutes) : 0);
   const proximity = (km: number | null) => (km === null || prefs.mode === 'ONLINE' ? 1 : Math.max(0, 1 - km / prefs.maxDistanceKm));
   const distanceTo = (p: { lat: number; lng: number }) => (user.me.location ? round(haversineKm(user.me.location, p), 1) : null);
   const groupsWithMe = [...db.groups.values()].filter((g) => isMember(g, user.me.id));

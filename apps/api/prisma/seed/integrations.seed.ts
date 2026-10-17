@@ -1,5 +1,5 @@
 // OWNER: Agent C — Ticket C7: Integration Seed.
-import type { PrismaClient, LocationType } from '@prisma/client';
+import type { Prisma, PrismaClient, LocationType } from '@prisma/client';
 import { DateTime } from '@sgm/integrations';
 import type { CoreSeedResult } from './core.seed';
 
@@ -346,6 +346,78 @@ const PERIODS = [
 
 const CAMPUS_ROOMS = ['IB 028', 'IB 025', 'Q-BF10', 'Q-II', 'Északi 0.83', 'Déli 0-823', 'K.I.50', 'I.E.224'];
 
+/*
+ * Test-account schedules are similar but never identical: everyone taking a subject shares its lectures but
+ * sits in one of several practice groups, people keep different study hours, and some have a job or a hobby.
+ * All slots below are distinct, so any combination of groups is clash-free.
+ */
+type Slot = { weekday: number; period: number };
+const COURSES: Record<string, { name: string; room: string; lectures: Slot[]; practices: Slot[] }> = {
+  'BME-CALC1': {
+    name: 'Calculus 1',
+    room: 'K.I.50',
+    lectures: [{ weekday: 1, period: 0 }, { weekday: 3, period: 1 }],
+    practices: [{ weekday: 2, period: 2 }, { weekday: 4, period: 0 }, { weekday: 5, period: 1 }, { weekday: 2, period: 4 }],
+  },
+  'BME-ITC1': {
+    name: 'Introduction to Theory of Computing',
+    room: 'I.E.224',
+    lectures: [{ weekday: 2, period: 0 }],
+    practices: [{ weekday: 3, period: 2 }, { weekday: 4, period: 3 }, { weekday: 1, period: 3 }],
+  },
+  'BME-DIGIT1': {
+    name: 'Digital Design',
+    room: 'IB 025',
+    lectures: [{ weekday: 4, period: 1 }],
+    practices: [{ weekday: 1, period: 2 }, { weekday: 3, period: 3 }, { weekday: 5, period: 0 }],
+  },
+  'BME-EE1': {
+    name: 'Basics of Electrical Engineering',
+    room: 'Déli 0-823',
+    lectures: [{ weekday: 3, period: 0 }],
+    practices: [{ weekday: 4, period: 2 }, { weekday: 1, period: 4 }, { weekday: 5, period: 2 }],
+  },
+  'BME-PROG1': {
+    name: 'Basics of Programming',
+    room: 'IB 028',
+    lectures: [{ weekday: 1, period: 1 }],
+    practices: [{ weekday: 2, period: 3 }, { weekday: 3, period: 4 }, { weekday: 5, period: 3 }, { weekday: 4, period: 4 }],
+  },
+};
+
+type Window = { weekday: number; startTime: string; endTime: string };
+const days = (weekdays: number[], startTime: string, endTime: string): Window[] => weekdays.map((weekday) => ({ weekday, startTime, endTime }));
+const STUDY_HOURS: Window[][] = [
+  days([1, 2, 3, 4, 5], '08:00', '20:00'), // the app default
+  days([1, 2, 3, 4, 5], '07:30', '17:00'), // early bird
+  [...days([1, 2, 3, 4, 5], '12:00', '21:00'), ...days([6], '10:00', '14:00')], // late riser
+  [...days([1, 2, 3, 4], '15:00', '20:00'), ...days([6, 7], '10:00', '18:00')], // mostly weekends
+  days([1, 2, 4], '09:00', '18:00'), // three long days
+  [...days([1, 2, 3, 4, 5], '16:00', '21:00'), ...days([7], '12:00', '18:00')], // evenings
+];
+
+const COMMITMENTS: { title: string; category: 'WORK' | 'OTHER'; slots: [weekday: number, start: string, end: string][] }[] = [
+  { title: 'Part-time job', category: 'WORK', slots: [[2, '16:00', '20:00'], [4, '16:00', '20:00']] },
+  { title: 'Weekend shift at the café', category: 'WORK', slots: [[6, '09:00', '15:00']] },
+  { title: 'Tutoring', category: 'WORK', slots: [[3, '14:00', '16:00']] },
+  { title: 'Football training', category: 'OTHER', slots: [[1, '18:00', '19:30'], [3, '18:00', '19:30']] },
+  { title: 'Gym', category: 'OTHER', slots: [[5, '17:00', '18:30']] },
+  { title: 'Choir rehearsal', category: 'OTHER', slots: [[2, '19:00', '21:00']] },
+];
+
+/** Deterministic random numbers in [0, 1) per account (mulberry32), so re-seeding gives the same schedules. */
+function seededRandom(seed: number) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+const pickFrom = <T>(random: () => number, items: readonly T[]): T => items[Math.floor(random() * items.length)];
+
 export async function seedIntegrations(
   prisma: PrismaClient,
   core?: CoreSeedResult,
@@ -361,8 +433,6 @@ export async function seedIntegrations(
   await prisma.room.deleteMany();
   await prisma.location.deleteMany();
   // test accounts only: real users keep their Neptun calendar, link and study hours across re-seeds
-  await prisma.calendarEvent.deleteMany({ where: { source: 'NEPTUN', user: { isSeed: true } } });
-  await prisma.availabilityWindow.deleteMany({ where: { user: { isSeed: true } } });
   await prisma.neptunConnection.deleteMany({ where: { user: { isSeed: true } } });
 
   // 2. Seed 25 Budapest Locations with Rooms
@@ -391,7 +461,8 @@ export async function seedIntegrations(
   // 3. Resolve seed users
   let targetUserIds = core?.userIds;
   if (!targetUserIds || targetUserIds.length === 0) {
-    const users = await prisma.user.findMany({ select: { id: true } });
+    // standalone run: test accounts only, never real users
+    const users = await prisma.user.findMany({ where: { isSeed: true }, select: { id: true }, orderBy: { createdAt: 'asc' } });
     targetUserIds = users.map((u) => u.id);
   }
 
@@ -399,23 +470,8 @@ export async function seedIntegrations(
     return;
   }
 
-  // 4. Default Availability Windows for every seed user (Mon-Fri 08:00 - 20:00)
-  const defaultWindows = targetUserIds.flatMap((userId) =>
-    [1, 2, 3, 4, 5].map((weekday) => ({
-      userId,
-      weekday,
-      startTime: '08:00',
-      endTime: '20:00',
-    })),
-  );
 
-  for (let i = 0; i < defaultWindows.length; i += 1000) {
-    await prisma.availabilityWindow.createMany({
-      data: defaultWindows.slice(i, i + 1000),
-    });
-  }
-
-  // 5. Connect Neptun for all seed users
+  // 4. Connect Neptun for all seed users
   const neptunConnections = targetUserIds.map((userId) => ({
     userId,
     status: 'OK' as const,
@@ -430,101 +486,113 @@ export async function seedIntegrations(
     });
   }
 
-  // 6. Seed Neptun Timetables
-  // Fetch user subjects to link realistic classes
-  const userSubjects = await prisma.userSubject.findMany({
-    where: { userId: { in: targetUserIds } },
-    include: { subject: true },
-  });
+  // 5. Study hours and timetables (classes, jobs, hobbies)
+  await seedSchedules(prisma, targetUserIds);
+}
 
-  const userSubjectMap = new Map<string, Array<{ code: string; name: string }>>();
-  for (const us of userSubjects) {
-    const list = userSubjectMap.get(us.userId) ?? [];
-    list.push({ code: us.subject.code, name: us.subject.name });
-    userSubjectMap.set(us.userId, list);
-  }
+/**
+ * Study hours and calendars (classes, jobs, hobbies) for the given test accounts, replacing what they had.
+ * Also runs on its own to refresh schedules without resetting groups, swipes or matches.
+ */
+export async function seedSchedules(prisma: PrismaClient, targetUserIds: string[]): Promise<void> {
+  await prisma.calendarEvent.deleteMany({ where: { source: { in: ['NEPTUN', 'MANUAL'] }, userId: { in: targetUserIds } } });
+  await prisma.availabilityWindow.deleteMany({ where: { userId: { in: targetUserIds } } });
 
   const demoUser = await prisma.user.findUnique({
     where: { email: 'demo@sgm.local' },
     select: { id: true },
   });
 
+  // Study hours: the demo keeps the app default (Mon–Fri 08:00–20:00); everyone else gets one of the
+  // patterns, sometimes with a day off
+  const windows = targetUserIds.flatMap((userId, userIdx) => {
+    if (userId === demoUser?.id) return STUDY_HOURS[0].map((w) => ({ userId, ...w }));
+    const random = seededRandom(1000 + userIdx);
+    let pattern = pickFrom(random, STUDY_HOURS);
+    const weekdays = [...new Set(pattern.map((w) => w.weekday))];
+    if (weekdays.length > 3 && random() < 0.3) {
+      const dayOff = pickFrom(random, weekdays);
+      pattern = pattern.filter((w) => w.weekday !== dayOff);
+    }
+    return pattern.map((w) => ({ userId, ...w }));
+  });
+
+  for (let i = 0; i < windows.length; i += 1000) {
+    await prisma.availabilityWindow.createMany({
+      data: windows.slice(i, i + 1000),
+    });
+  }
+
+  // Fetch user subjects to link realistic classes
+  const userSubjects = await prisma.userSubject.findMany({
+    where: { userId: { in: targetUserIds } },
+    include: { subject: true },
+  });
+
+  const userSubjectMap = new Map<string, string[]>();
+  for (const us of userSubjects) {
+    userSubjectMap.set(us.userId, [...(userSubjectMap.get(us.userId) ?? []), us.subject.code]);
+  }
+
   const nowBudapest = DateTime.now().setZone('Europe/Budapest');
   const startOfCurrentWeek = nowBudapest.startOf('week'); // Monday
+  const at = (week: number, weekday: number, hour: number, minute: number) =>
+    startOfCurrentWeek.plus({ weeks: week, days: weekday - 1 }).set({ hour, minute, second: 0, millisecond: 0 });
+  const hm = (time: string) => time.split(':').map(Number) as [number, number];
 
-  const calendarEvents: Array<{
-    userId: string;
-    title: string;
-    start: Date;
-    end: Date;
-    room: string;
-    subjectCode: string;
-    source: 'NEPTUN';
-    externalUid: string;
-  }> = [];
+  const calendarEvents: Prisma.CalendarEventCreateManyInput[] = [];
 
-  // Generate 8 weeks of timetable classes for each user
+  // 8 weeks of classes (+ jobs / hobbies) per test account
   for (let userIdx = 0; userIdx < targetUserIds.length; userIdx++) {
     const userId = targetUserIds[userIdx];
-    const isDemo = demoUser && userId === demoUser.id;
-    const subjects = userSubjectMap.get(userId) ?? [];
+    const isDemo = userId === demoUser?.id;
+    const random = seededRandom(5000 + userIdx);
 
-    if (isDemo) {
-      // Demo schedule: predictable, leaving afternoons and Friday open
-      const demoClasses = [
-        { weekday: 1, periodIdx: 1, code: 'BME-PROG1', name: 'Basics of Programming', room: 'IB 028' },
-        { weekday: 2, periodIdx: 0, code: 'BME-CALC1', name: 'Calculus 1', room: 'Q-II' },
-        { weekday: 2, periodIdx: 1, code: 'BME-DIGIT1', name: 'Digital Design', room: 'IB 025' },
-        { weekday: 3, periodIdx: 0, code: 'BME-EE1', name: 'Basics of Electrical Engineering', room: 'Déli 0-823' },
-        { weekday: 3, periodIdx: 3, code: 'BME-ITC1', name: 'Introduction to Theory of Computing', room: 'I.E.224' },
-        { weekday: 4, periodIdx: 1, code: 'BME-CALC1', name: 'Calculus 1', room: 'K.I.50' },
-      ];
+    // every subject's lectures + one of its practice groups (the demo is always in the first group)
+    const classes = (userSubjectMap.get(userId) ?? [])
+      .filter((code) => COURSES[code])
+      .flatMap((code) => {
+        const course = COURSES[code];
+        const practice = isDemo ? course.practices[0] : pickFrom(random, course.practices);
+        return [
+          ...course.lectures.map((slot) => ({ code, slot, kind: 'Lecture', room: course.room })),
+          { code, slot: practice, kind: 'Practice', room: pickFrom(random, CAMPUS_ROOMS) },
+        ];
+      });
+    // jobs and hobbies: about half the accounts have one, some two (none for the demo, to keep it predictable),
+    // never on top of their own classes
+    const minutes = (h: number, m: number) => h * 60 + m;
+    const clashes = ([weekday, from, to]: [number, string, string]) =>
+      classes.some(({ slot }) => {
+        const p = PERIODS[slot.period];
+        return slot.weekday === weekday && minutes(...hm(from)) < minutes(p.endHour, p.endMin) && minutes(p.startHour, p.startMin) < minutes(...hm(to));
+      });
+    const commitments = isDemo ? [] : COMMITMENTS.filter((c) => random() < 0.12 && !c.slots.some(clashes));
 
-      for (let week = 0; week < 8; week++) {
-        for (const cls of demoClasses) {
-          const period = PERIODS[cls.periodIdx];
-          const classStart = startOfCurrentWeek
-            .plus({ weeks: week, days: cls.weekday - 1 })
-            .set({ hour: period.startHour, minute: period.startMin, second: 0, millisecond: 0 });
-          const classEnd = classStart.set({ hour: period.endHour, minute: period.endMin });
-
-          calendarEvents.push({
-            userId,
-            title: `${cls.name} (${cls.code}) - Lecture`,
-            start: classStart.toJSDate(),
-            end: classEnd.toJSDate(),
-            room: cls.room,
-            subjectCode: cls.code,
-            source: 'NEPTUN',
-            externalUid: `neptun-${userId}-${cls.code}-w${week}-d${cls.weekday}`,
-          });
-        }
+    for (let week = 0; week < 8; week++) {
+      for (const cls of classes) {
+        const period = PERIODS[cls.slot.period];
+        const start = at(week, cls.slot.weekday, period.startHour, period.startMin);
+        calendarEvents.push({
+          userId,
+          title: `${COURSES[cls.code].name} (${cls.code}) - ${cls.kind}`,
+          start: start.toJSDate(),
+          end: start.set({ hour: period.endHour, minute: period.endMin }).toJSDate(),
+          room: cls.room,
+          subjectCode: cls.code,
+          source: 'NEPTUN',
+          externalUid: `neptun-${userId}-${cls.code}-${cls.kind}-w${week}-d${cls.slot.weekday}`,
+        });
       }
-    } else {
-      // Seed regular student timetable based on their enrolled subjects (up to 3 classes)
-      const classesToSchedule = subjects.slice(0, 3);
-      for (let sIdx = 0; sIdx < classesToSchedule.length; sIdx++) {
-        const subj = classesToSchedule[sIdx];
-        const weekday = ((userIdx + sIdx * 2) % 4) + 1; // Mon - Thu
-        const periodIdx = (userIdx + sIdx) % PERIODS.length;
-        const period = PERIODS[periodIdx];
-        const room = CAMPUS_ROOMS[(userIdx + sIdx) % CAMPUS_ROOMS.length];
-
-        for (let week = 0; week < 8; week++) {
-          const classStart = startOfCurrentWeek
-            .plus({ weeks: week, days: weekday - 1 })
-            .set({ hour: period.startHour, minute: period.startMin, second: 0, millisecond: 0 });
-          const classEnd = classStart.set({ hour: period.endHour, minute: period.endMin });
-
+      for (const c of commitments) {
+        for (const [weekday, from, to] of c.slots) {
           calendarEvents.push({
             userId,
-            title: `${subj.name} (${subj.code})`,
-            start: classStart.toJSDate(),
-            end: classEnd.toJSDate(),
-            room,
-            subjectCode: subj.code,
-            source: 'NEPTUN',
-            externalUid: `neptun-${userId}-${subj.code}-w${week}-d${weekday}`,
+            title: c.title,
+            start: at(week, weekday, ...hm(from)).toJSDate(),
+            end: at(week, weekday, ...hm(to)).toJSDate(),
+            source: 'MANUAL',
+            category: c.category,
           });
         }
       }
