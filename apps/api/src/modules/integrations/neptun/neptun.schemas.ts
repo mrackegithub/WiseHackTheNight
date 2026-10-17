@@ -48,6 +48,7 @@ export const manualEventSchema = z
     start: z.string().datetime({ offset: true }),
     end: z.string().datetime({ offset: true }),
     repeatWeeks: z.number().int().min(0).max(16).default(0),
+    category: z.enum(['CLASS', 'STUDY', 'WORK', 'OTHER']).default('OTHER'),
   })
   .refine((d) => new Date(d.start).getTime() < new Date(d.end).getTime(), { message: 'end must be after start', path: ['end'] })
   .refine((d) => new Date(d.end).getTime() - new Date(d.start).getTime() <= 24 * 60 * 60 * 1000, {

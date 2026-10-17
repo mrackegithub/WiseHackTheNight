@@ -7,6 +7,14 @@ enum EventSource {
   STUDY_SESSION
 }
 
+// What a MANUAL busy time is (shown in its own colour)
+enum EventCategory {
+  CLASS
+  STUDY
+  WORK
+  OTHER
+}
+
 enum SyncStatus {
   NOT_CONNECTED
   OK
@@ -54,6 +62,7 @@ model CalendarEvent {
   room        String?
   subjectCode String?
   source      EventSource
+  category    EventCategory? // MANUAL events only: what the busy time is
   user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, source, externalUid])

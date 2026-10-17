@@ -1,10 +1,13 @@
 import { useState } from 'react';
 import { DateTime } from 'luxon';
 import { useSearchParams } from 'react-router';
+import type { Schemas } from '@sgm/contracts';
 import { Button } from '../components/form/Button';
 import { QueryError } from '../components/QueryError';
 import { Spinner } from '../components/Spinner';
 import { BusyTimeModal } from '../features/calendar/BusyTimeModal';
+import { EventDetailsModal } from '../features/calendar/EventDetailsModal';
+import { categoryOptions } from '../features/calendar/event-style';
 import { ManualEventsList } from '../features/calendar/ManualEventsList';
 import { NeptunPanel } from '../features/calendar/NeptunPanel';
 import { useWeekAvailability, useWeekSchedule } from '../features/calendar/queries';
@@ -20,6 +23,7 @@ export function CalendarPage() {
   const requested = params.get('week') ? DateTime.fromISO(params.get('week')!, { zone: ZONE }) : null;
   const weekStart = startOfWeek(requested?.isValid ? requested : undefined);
   const [addingBusy, setAddingBusy] = useState(false);
+  const [selectedEvent, setSelectedEvent] = useState<Schemas['CalendarEvent'] | null>(null);
 
   const schedule = useWeekSchedule(weekStart);
   const availability = useWeekAvailability(weekStart);
@@ -59,15 +63,11 @@ export function CalendarPage() {
       <NeptunPanel />
 
       <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-600" aria-hidden>
-        <span className="flex items-center gap-1">
-          <span className="h-3 w-3 rounded bg-indigo-600" /> Class
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="h-3 w-3 rounded bg-slate-600" /> Your busy time
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="h-3 w-3 rounded bg-amber-500" /> Study session
-        </span>
+        {categoryOptions.map((o) => (
+          <span key={o.value} className="flex items-center gap-1">
+            <span className={`h-3 w-3 rounded ${o.swatch}`} /> {o.label}
+          </span>
+        ))}
         <span className="flex items-center gap-1">
           <span className="h-3 w-3 rounded bg-emerald-100" /> Free to study
         </span>
@@ -86,7 +86,7 @@ export function CalendarPage() {
         <Spinner label="Loading your week" />
       ) : (
         <>
-          <WeekView weekStart={weekStart} events={schedule.data ?? []} freeSlots={availability.data ?? []} />
+          <WeekView weekStart={weekStart} events={schedule.data ?? []} freeSlots={availability.data ?? []} onSelectEvent={setSelectedEvent} />
           {!hasClasses && (
             <p className="text-sm text-slate-600">
               No classes this week. Connect your Neptun calendar above, or add your classes and other commitments with{' '}
@@ -103,6 +103,7 @@ export function CalendarPage() {
       <WindowsEditor />
 
       {addingBusy && <BusyTimeModal defaultDate={defaultDate} onClose={() => setAddingBusy(false)} />}
+      {selectedEvent && <EventDetailsModal event={selectedEvent} onClose={() => setSelectedEvent(null)} />}
     </section>
   );
 }

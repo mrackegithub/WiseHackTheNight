@@ -1,6 +1,7 @@
 import type { DateTime } from 'luxon';
 import type { Schemas } from '@sgm/contracts';
 import { formatTimeRange, inZone, nowInZone } from '../../lib/time';
+import { eventStyle } from './event-style';
 
 const START_HOUR = 7;
 const END_HOUR = 21;
@@ -30,9 +31,11 @@ interface WeekViewProps {
   weekStart: DateTime;
   events: Schemas['CalendarEvent'][];
   freeSlots: Schemas['TimeSlot'][];
+  /** Clicking an event opens its details (and Remove for your own busy times). */
+  onSelectEvent?: (event: Schemas['CalendarEvent']) => void;
 }
 
-export function WeekView({ weekStart, events, freeSlots }: WeekViewProps) {
+export function WeekView({ weekStart, events, freeSlots, onSelectEvent }: WeekViewProps) {
   const days = Array.from({ length: 7 }, (_, i) => weekStart.plus({ days: i }));
   const today = nowInZone().startOf('day');
   const hours = Array.from({ length: END_HOUR - START_HOUR }, (_, i) => START_HOUR + i);
@@ -83,18 +86,18 @@ export function WeekView({ weekStart, events, freeSlots }: WeekViewProps) {
                     </li>
                   ))}
                   {eventBlocks.map(({ ev, block: b }) => (
-                    <li
-                      key={b.key}
-                      aria-label={`${ev.title}, ${formatTimeRange(ev.start, ev.end)}${ev.room ? `, ${ev.room}` : ''}`}
-                      title={`${ev.title}\n${formatTimeRange(ev.start, ev.end)}${ev.room ? `\n${ev.room}` : ''}`}
-                      className={`absolute inset-x-1 overflow-hidden rounded-md px-1.5 py-1 text-[11px] leading-tight shadow-sm ${
-                        ev.source === 'STUDY_SESSION' ? 'bg-amber-500 text-white' : ev.source === 'MANUAL' ? 'bg-slate-600 text-white' : 'bg-indigo-600 text-white'
-                      }`}
-                      style={{ top: b.top, height: b.height }}
-                    >
-                      <span className="block font-medium">{ev.title}</span>
-                      {b.height >= 40 && <span className="block opacity-80">{formatTimeRange(ev.start, ev.end)}</span>}
-                      {b.height >= 56 && ev.room && <span className="block truncate opacity-80">{ev.room}</span>}
+                    <li key={b.key} className="absolute inset-x-1" style={{ top: b.top, height: b.height }}>
+                      <button
+                        type="button"
+                        onClick={() => onSelectEvent?.(ev)}
+                        aria-label={`${ev.title}, ${formatTimeRange(ev.start, ev.end)}${ev.room ? `, ${ev.room}` : ''}`}
+                        title={`${ev.title}\n${formatTimeRange(ev.start, ev.end)}${ev.room ? `\n${ev.room}` : ''}`}
+                        className={`block h-full w-full overflow-hidden rounded-md px-1.5 py-1 text-left text-[11px] leading-tight shadow-sm hover:brightness-110 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-slate-900 ${eventStyle(ev).className}`}
+                      >
+                        <span className="block font-medium">{ev.title}</span>
+                        {b.height >= 40 && <span className="block opacity-80">{formatTimeRange(ev.start, ev.end)}</span>}
+                        {b.height >= 56 && ev.room && <span className="block truncate opacity-80">{ev.room}</span>}
+                      </button>
                     </li>
                   ))}
                 </ul>

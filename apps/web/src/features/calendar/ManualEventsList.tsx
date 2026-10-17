@@ -5,6 +5,7 @@ import { unwrap } from '../../api/errors';
 import { Button } from '../../components/form/Button';
 import { formatSlot } from '../../lib/time';
 import { toast } from '../../lib/toast';
+import { eventStyle } from './event-style';
 import { calendarKeys } from './queries';
 
 /** The user's own busy blocks in the visible week, each deletable (DELETE /me/schedule/{id}). */
@@ -28,16 +29,21 @@ export function ManualEventsList({ events, onAdd }: { events: Schemas['CalendarE
           + Add busy time
         </Button>
       </div>
-      <p className="mt-1 text-sm text-slate-600">Things that aren't in Neptun, like a job or training. You won't be matched or scheduled then.</p>
+      <p className="mt-1 text-sm text-slate-600">
+        Things that aren't in Neptun, like a job or training. You won't be matched or scheduled then. Click any block in the calendar to see or remove it.
+      </p>
       {events.length === 0 ? (
         <p className="mt-3 text-sm text-slate-500">None this week.</p>
       ) : (
         <ul className="mt-3 flex flex-col gap-2">
           {events.map((e) => (
             <li key={e.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg bg-slate-50 px-3 py-2">
+              <span className={`h-3 w-3 shrink-0 rounded ${eventStyle(e).className}`} aria-hidden />
               <div className="min-w-0 flex-1">
                 <p className="font-medium">{e.title}</p>
-                <p className="text-xs text-slate-600">{formatSlot(e.start, e.end)}</p>
+                <p className="text-xs text-slate-600">
+                  {eventStyle(e).label} · {formatSlot(e.start, e.end)}
+                </p>
               </div>
               <Button
                 variant="ghost"

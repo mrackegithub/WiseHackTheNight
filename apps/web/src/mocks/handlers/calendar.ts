@@ -29,6 +29,7 @@ const busyEvents = (user: MockUser, from: DateTime, to: DateTime) =>
   ].sort((a, b) => a.start.localeCompare(b.start));
 
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
+const CATEGORIES: Schemas['EventCategory'][] = ['CLASS', 'STUDY', 'WORK', 'OTHER'];
 
 export const calendarHandlers = [
   http.get(
@@ -47,11 +48,13 @@ export const calendarHandlers = [
       const start = DateTime.fromISO(body.start ?? '');
       const end = DateTime.fromISO(body.end ?? '');
       const repeat = body.repeatWeeks ?? 0;
+      const category = body.category ?? 'OTHER';
       const details: { path: string; issue: string }[] = [];
       if (!body.title?.trim() || body.title.length > 120) details.push({ path: 'title', issue: 'title is required (max 120)' });
       if (!start.isValid || !end.isValid || end <= start) details.push({ path: 'end', issue: 'end must be after start' });
       else if (end.diff(start, 'hours').hours > 24) details.push({ path: 'end', issue: 'a busy block can be at most 24 hours long' });
       if (!Number.isInteger(repeat) || repeat < 0 || repeat > 16) details.push({ path: 'repeatWeeks', issue: '0–16' });
+      if (!CATEGORIES.includes(category)) details.push({ path: 'category', issue: `one of ${CATEGORIES.join(', ')}` });
       if (details.length) return apiError(422, 'VALIDATION_FAILED', 'Request validation failed', details);
 
       // weekly copies keep the same Budapest local time across DST, like the real API
@@ -64,6 +67,7 @@ export const calendarHandlers = [
         room: null,
         subjectCode: null,
         source: 'MANUAL',
+        category,
       }));
       user.calendar.manualEvents.push(...created);
       return HttpResponse.json<Schemas['CalendarEvent'][]>(created, { status: 201 });

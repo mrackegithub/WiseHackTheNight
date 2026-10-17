@@ -36,15 +36,7 @@ export async function getMySchedule(
     orderBy: { start: 'asc' },
   });
 
-  return events.map((e) => ({
-    id: e.id,
-    title: e.title,
-    start: e.start.toISOString(),
-    end: e.end.toISOString(),
-    room: e.room ?? null,
-    subjectCode: e.subjectCode ?? null,
-    source: e.source,
-  }));
+  return events.map((e) => toEventResponse(e));
 }
 
 const toEventResponse = (e: {
@@ -55,6 +47,7 @@ const toEventResponse = (e: {
   room: string | null;
   subjectCode: string | null;
   source: CalendarEventResponse['source'];
+  category?: CalendarEventResponse['category'] | null;
 }): CalendarEventResponse => ({
   id: e.id,
   title: e.title,
@@ -63,6 +56,7 @@ const toEventResponse = (e: {
   room: e.room ?? null,
   subjectCode: e.subjectCode ?? null,
   source: e.source,
+  ...(e.category ? { category: e.category } : {}),
 });
 
 /** Busy blocks the user adds by hand; weekly copies keep the same Budapest local time across DST. */
@@ -82,6 +76,7 @@ export async function createManualEvents(
           start: start.plus({ weeks: week }).toJSDate(),
           end: end.plus({ weeks: week }).toJSDate(),
           source: 'MANUAL',
+          category: input.category,
         },
       }),
     ),

@@ -689,7 +689,14 @@ export interface components {
             subjectCode?: string | null;
             /** @enum {string} */
             source: "NEPTUN" | "MANUAL" | "STUDY_SESSION";
+            /** @description Set on MANUAL events (what the busy time is); absent for Neptun classes and study sessions. */
+            category?: components["schemas"]["EventCategory"];
         };
+        /**
+         * @description What a manual busy time is: CLASS (a class not in Neptun), STUDY (own study time), WORK, OTHER.
+         * @enum {string}
+         */
+        EventCategory: "CLASS" | "STUDY" | "WORK" | "OTHER";
         ManualEventInput: {
             /** @example Part-time job */
             title: string;
@@ -705,6 +712,7 @@ export interface components {
              * @default 0
              */
             repeatWeeks: number;
+            category?: components["schemas"]["EventCategory"];
         };
         NeptunConnection: {
             connected: boolean;

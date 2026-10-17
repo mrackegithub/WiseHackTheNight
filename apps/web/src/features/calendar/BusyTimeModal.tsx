@@ -12,15 +12,15 @@ import { messageForError } from '../../lib/error-messages';
 import { fieldErrors } from '../../lib/field-errors';
 import { nowInZone, toApiTime, ZONE } from '../../lib/time';
 import { toast } from '../../lib/toast';
+import { categoryOptions, type EventCategory } from './event-style';
 import { calendarKeys } from './queries';
 
 /** repeatWeeks = extra weekly copies, so "4 weeks" = 3. */
 const repeatOptions = [
   { value: 0, label: "Doesn't repeat" },
+  { value: 1, label: 'Every week for 2 weeks' },
+  { value: 2, label: 'Every week for 3 weeks' },
   { value: 3, label: 'Every week for 4 weeks' },
-  { value: 7, label: 'Every week for 8 weeks' },
-  { value: 11, label: 'Every week for 12 weeks' },
-  { value: 15, label: 'Every week for 16 weeks (semester)' },
 ];
 
 interface Props {
@@ -33,6 +33,7 @@ interface Props {
 export function BusyTimeModal({ defaultDate, onClose }: Props) {
   const queryClient = useQueryClient();
   const [values, setValues] = useState({ title: '', date: defaultDate.toISODate()!, start: '18:00', end: '19:30', repeatWeeks: 0 });
+  const [category, setCategory] = useState<EventCategory>('OTHER');
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const save = useMutation({
@@ -56,7 +57,7 @@ export function BusyTimeModal({ defaultDate, onClose }: Props) {
     else if (end <= start) next.end = 'End must be after start.';
     setErrors(next);
     if (Object.keys(next).length) return;
-    save.mutate({ title: values.title.trim(), start: toApiTime(start), end: toApiTime(end), repeatWeeks: values.repeatWeeks });
+    save.mutate({ title: values.title.trim(), start: toApiTime(start), end: toApiTime(end), repeatWeeks: values.repeatWeeks, category });
   }
 
   const set = (field: keyof typeof values) => (e: { target: { value: string } }) =>
@@ -69,6 +70,23 @@ export function BusyTimeModal({ defaultDate, onClose }: Props) {
       <form onSubmit={submit} noValidate className="flex flex-col gap-4">
         <FormError message={serverError} />
         <TextField label="What is it?" placeholder="e.g. Part-time job, football training" value={values.title} onChange={set('title')} error={errors.title} data-autofocus />
+        <fieldset>
+          <legend className="text-sm font-medium text-slate-700">Type</legend>
+          <div className="mt-1 grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {categoryOptions.map((o) => (
+              <label
+                key={o.value}
+                className={`flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-indigo-600 ${
+                  category === o.value ? 'border-slate-900 bg-slate-50 font-medium' : 'border-slate-300'
+                }`}
+              >
+                <input type="radio" name="category" value={o.value} checked={category === o.value} onChange={() => setCategory(o.value)} className="sr-only" />
+                <span className={`h-3 w-3 shrink-0 rounded ${o.swatch}`} aria-hidden />
+                {o.label}
+              </label>
+            ))}
+          </div>
+        </fieldset>
         <div className="grid gap-3 sm:grid-cols-3">
           <TextField label="Date" type="date" value={values.date} min={nowInZone().toISODate()!} onChange={set('date')} error={errors.date ?? errors.start} />
           <TextField label="From" type="time" step={900} value={values.start} onChange={set('start')} />
