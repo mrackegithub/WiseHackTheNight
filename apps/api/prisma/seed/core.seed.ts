@@ -480,6 +480,22 @@ export async function seedCore(prisma: PrismaClient): Promise<CoreSeedResult> {
     });
   }
 
+  // Pending likes: top-ranked classmates (complementary roles, users 3–14) already liked the demo user in
+  // Algorithms and Calculus, so swiping right on them in the deck produces the "It's a match!" moment.
+  // (The matches above are already complete, so without these the demo deck never matches.)
+  await prisma.swipe.createMany({
+    data: userIds.slice(3, 15).flatMap((swiperId) =>
+      [algoSubject.id, calcSubject.id].map((subjectId) => ({
+        swiperId,
+        targetKind: 'user',
+        targetId: demoUser.id,
+        subjectId,
+        direction: 'LIKE' as const,
+      })),
+    ),
+    skipDuplicates: true,
+  });
+
   return {
     userIds,
     subjectIds,

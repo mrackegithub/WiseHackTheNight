@@ -9,7 +9,7 @@ import {
   type ParsedCalendarEvent,
 } from '@sgm/integrations';
 import type { paths } from '@sgm/contracts';
-import { conflict, badRequest } from '../../../core/errors.js';
+import { conflict, validationError } from '../../../core/errors.js';
 
 export type NeptunStatusResponse =
   paths['/integrations/neptun']['get']['responses'][200]['content']['application/json'];
@@ -58,10 +58,9 @@ export async function connectNeptun(
     normalizedUrl = normalizeCalendarUrl(rawUrl);
     await validateSafeUrl(normalizedUrl);
   } catch (err: unknown) {
-    throw badRequest(
-      `Invalid or unsafe Neptun URL: ${err instanceof Error ? err.message : String(err)}`,
-      'VALIDATION_FAILED',
-    );
+    throw validationError(`Invalid or unsafe Neptun URL: ${err instanceof Error ? err.message : String(err)}`, [
+      { path: 'icsUrl', issue: 'must be a public http(s):// or webcal:// calendar link' },
+    ]);
   }
 
   const encryptedUrl = encryptUrl(normalizedUrl);
@@ -181,7 +180,7 @@ export async function uploadNeptunIcs(
   icsText: string,
 ): Promise<SyncResultResponse> {
   if (!icsText || !icsText.includes('BEGIN:VCALENDAR')) {
-    throw badRequest('Invalid iCalendar file format', 'VALIDATION_FAILED');
+    throw validationError('Invalid iCalendar file format', [{ path: 'file', issue: 'must be an .ics (iCalendar) file' }]);
   }
 
   const result = await applyIcsData(prisma, userId, icsText);

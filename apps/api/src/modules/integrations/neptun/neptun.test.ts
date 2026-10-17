@@ -75,7 +75,7 @@ END:VCALENDAR`;
   });
 
   describe('PUT /api/v1/integrations/neptun (connect)', () => {
-    it('blocks private SSRF URL with 400', async () => {
+    it('blocks private SSRF URL with 422', async () => {
       const res = await app.inject({
         method: 'PUT',
         url: '/api/v1/integrations/neptun',
@@ -83,7 +83,7 @@ END:VCALENDAR`;
         payload: { icsUrl: 'http://127.0.0.1:4000/calendar.ics' },
       });
 
-      expect(res.statusCode).toBe(400);
+      expect(res.statusCode).toBe(422);
     });
 
     it('rejects empty or missing icsUrl with 422', async () => {
@@ -99,7 +99,7 @@ END:VCALENDAR`;
   });
 
   describe('POST /api/v1/integrations/neptun/upload', () => {
-    it('rejects invalid non-ICS content with 400', async () => {
+    it('rejects invalid non-ICS content with 422', async () => {
       const res = await app.inject({
         method: 'POST',
         url: '/api/v1/integrations/neptun/upload',
@@ -110,7 +110,7 @@ END:VCALENDAR`;
         payload: 'NOT A VALID ICS',
       });
 
-      expect(res.statusCode).toBe(400);
+      expect(res.statusCode).toBe(422);
     });
 
     it('imports ICS, creates calendar events, and links subject as PEER', async () => {

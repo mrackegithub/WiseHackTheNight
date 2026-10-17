@@ -1,67 +1,7 @@
 import type { PrismaClient, RoleTag } from '@prisma/client';
 import { conflict, notFound } from '../../core/errors.js';
-import { stubIntersectSlots } from '../../core/stubs/integrations.stub.js';
+import { AvailabilityServiceImpl, DateTime, intersectMultipleSlots, subtractSlots, type AvailabilityDb } from '@sgm/integrations';
 import type { CreateGroupInput, SuggestedSlotsQuery } from './groups.schemas.js';
-
-function generateDaySlots(rangeStart: Date, rangeEnd: Date, minMinutes: number) {
-  const slots: Array<{ start: Date; end: Date }> = [];
-  const curr = new Date(rangeStart);
-  curr.setUTCHours(0, 0, 0, 0);
-
-  while (curr.getTime() < rangeEnd.getTime()) {
-    const dayOfWeek = curr.getUTCDay();
-    // Weekdays Monday - Friday
-    if (dayOfWeek !== 0 && dayOfWeek !== 6) {
-      const slotStart = new Date(curr);
-      slotStart.setUTCHours(9, 0, 0, 0);
-      const slotEnd = new Date(curr);
-      slotEnd.setUTCHours(17, 0, 0, 0);
-
-      const effectiveStart = new Date(Math.max(slotStart.getTime(), rangeStart.getTime()));
-      const effectiveEnd = new Date(Math.min(slotEnd.getTime(), rangeEnd.getTime()));
-
-      if (effectiveEnd.getTime() - effectiveStart.getTime() >= minMinutes * 60 * 1000) {
-        slots.push({ start: effectiveStart, end: effectiveEnd });
-      }
-    }
-    curr.setUTCDate(curr.getUTCDate() + 1);
-  }
-  return slots;
-}
-
-function subtractBusy(
-  freeSlots: Array<{ start: Date; end: Date }>,
-  busy: Array<{ start: Date; end: Date }>,
-  minMinutes: number,
-) {
-  let current = [...freeSlots];
-  const minMs = minMinutes * 60 * 1000;
-
-  for (const b of busy) {
-    const next: Array<{ start: Date; end: Date }> = [];
-    for (const f of current) {
-      // No overlap
-      if (b.end.getTime() <= f.start.getTime() || b.start.getTime() >= f.end.getTime()) {
-        next.push(f);
-        continue;
-      }
-      // Keep portion before busy start
-      if (b.start.getTime() > f.start.getTime()) {
-        if (b.start.getTime() - f.start.getTime() >= minMs) {
-          next.push({ start: f.start, end: new Date(b.start) });
-        }
-      }
-      // Keep portion after busy end
-      if (b.end.getTime() < f.end.getTime()) {
-        if (f.end.getTime() - b.end.getTime() >= minMs) {
-          next.push({ start: new Date(b.end), end: f.end });
-        }
-      }
-    }
-    current = next;
-  }
-  return current;
-}
 
 export async function listMyGroups(prisma: PrismaClient, userId: string) {
   const groups = await prisma.group.findMany({
@@ -431,55 +371,28 @@ export async function getGroupSuggestedSlots(
     return [];
   }
 
-  // Fetch busy events for each member (study sessions + calendar events)
-  const [sessions, calendarEvents] = await Promise.all([
+  // Each member's real free time (their weekly windows in Europe/Budapest − Neptun classes − mirrored
+  // study sessions) via AvailabilityService (≤ 2 queries), minus planned sessions of their groups in case
+  // a session wasn't mirrored into the calendar (e.g. seeded ones).
+  const [freeByUser, sessions] = await Promise.all([
+    new AvailabilityServiceImpl(prisma as unknown as AvailabilityDb).getFreeSlotsBulk(memberIds, { start: from, end: to }, minMinutes),
     prisma.studySession.findMany({
       where: {
-        status: { in: ['PLANNED', 'DONE'] },
-        group: {
-          members: { some: { userId: { in: memberIds } } },
-        },
+        status: 'PLANNED',
+        group: { members: { some: { userId: { in: memberIds } } } },
         start: { lt: to },
         end: { gt: from },
       },
-      include: {
-        group: { select: { members: { select: { userId: true } } } },
-      },
-    }),
-    prisma.calendarEvent.findMany({
-      where: {
-        userId: { in: memberIds },
-        start: { lt: to },
-        end: { gt: from },
-      },
-      select: {
-        userId: true,
-        start: true,
-        end: true,
-      },
+      include: { group: { select: { members: { select: { userId: true } } } } },
     }),
   ]);
 
-  // Compute free slots per member
   const memberSlots = memberIds.map((uid) => {
-    const userSessions = sessions
-      .filter((s) => s.group.members.some((m) => m.userId === uid))
-      .map((s) => ({ start: s.start, end: s.end }));
-
-    const userCal = calendarEvents
-      .filter((c) => c.userId === uid)
-      .map((c) => ({ start: c.start, end: c.end }));
-
-    const busy = [...userSessions, ...userCal];
-    const baseSlots = generateDaySlots(from, to, minMinutes);
-    return subtractBusy(baseSlots, busy, minMinutes);
+    const busy = sessions.filter((s) => s.group.members.some((m) => m.userId === uid)).map((s) => ({ start: s.start, end: s.end }));
+    return subtractSlots(freeByUser.get(uid) ?? [], busy, minMinutes);
   });
 
-  // Intersect all members' slots
-  let commonSlots = memberSlots[0] ?? [];
-  for (let i = 1; i < memberSlots.length; i++) {
-    commonSlots = stubIntersectSlots(commonSlots, memberSlots[i], minMinutes);
-  }
+  const commonSlots = intersectMultipleSlots(memberSlots, minMinutes);
 
   // Rank: prefers >= 90 min, daytime, soonest
   const totalSpan = Math.max(1, to.getTime() - from.getTime());
@@ -487,9 +400,9 @@ export async function getGroupSuggestedSlots(
     const durationMin = (slot.end.getTime() - slot.start.getTime()) / (60 * 1000);
     const durationScore = durationMin >= 90 ? 1.0 : durationMin / 90;
 
-    // Daytime check: hours in UTC 9..17 (approx 10..18 local Budapest time)
-    const startHour = slot.start.getUTCHours();
-    const daytimeScore = startHour >= 9 && startHour <= 15 ? 1.0 : 0.7;
+    // Daytime: starts between 09:00 and 17:00 Budapest time
+    const startHour = DateTime.fromJSDate(slot.start).setZone('Europe/Budapest').hour;
+    const daytimeScore = startHour >= 9 && startHour < 17 ? 1.0 : 0.7;
 
     // Soonest check: earlier in range gets higher score
     const soonestScore = Math.max(0, 1 - (slot.start.getTime() - from.getTime()) / totalSpan);

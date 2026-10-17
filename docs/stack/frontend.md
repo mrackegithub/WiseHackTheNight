@@ -44,7 +44,7 @@ Agent A appends a row in the **same commit** that changes a package.json, env va
 | Name | Example | Purpose |
 |---|---|---|
 | VITE_API_URL | http://localhost:4000/api/v1 | API base URL (`src/lib/config.ts`; this value is also the default) |
-| VITE_USE_MOCKS | true | dev only: MSW answers every API call from `src/mocks/` (in-memory, contract-typed). Mocks are **on in dev unless set to `false`**; production builds never include them |
+| VITE_USE_MOCKS | false | dev only: `true` = MSW answers every API call from `src/mocks/` (in-memory, contract-typed). Since Phase 2 the **real API is the default**; e2e tests force mocks on; production builds never include them |
 | VITE_MAP_TILE_URL | https://tile.openstreetmap.org/{z}/{x}/{y}.png | Leaflet tile server (used from ticket A7) |
 
 Dev server port: **5173** (`vite.config.ts`).
