@@ -20,14 +20,17 @@ describe('B4: Core Seed', () => {
     expect(userCount).toBe(200);
   });
 
-  it('leaves exactly the five first-semester subjects, and test accounts take only those', async () => {
+  it('leaves the eight first-semester subjects, and test accounts take only those', async () => {
     const subjects = await prisma.subject.findMany();
     expect(subjects.map((s) => s.name).sort()).toEqual([
       'Basics of Electrical Engineering',
+      'Basics of Physics',
       'Basics of Programming',
       'Calculus 1',
       'Digital Design',
+      'Hungarian Language and Culture 1',
       'Introduction to Theory of Computing',
+      'Study Group Seminar 1',
     ]);
     const outside = await prisma.userSubject.count({ where: { user: { isSeed: true }, subjectId: { notIn: subjects.map((s) => s.id) } } });
     expect(outside).toBe(0);

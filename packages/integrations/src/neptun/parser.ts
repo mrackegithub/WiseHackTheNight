@@ -63,8 +63,8 @@ export function parseIcs(icsContent: string, options: ParseIcsOptions = {}): Par
   const maxWeeks = options.maxWeeksAhead ?? 16;
   const now = options.now ? new Date(options.now.getTime()) : new Date();
 
-  // Range window: from 14 days ago up to maxWeeks in future
-  const rangeStart = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
+  // Range window: from 60 days ago (full current semester) up to maxWeeks in future
+  const rangeStart = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
   const rangeEnd = new Date(now.getTime() + maxWeeks * 7 * 24 * 60 * 60 * 1000);
 
   const parsed = nodeIcal.sync.parseICS(icsContent);
@@ -75,6 +75,10 @@ export function parseIcs(icsContent: string, options: ParseIcsOptions = {}): Par
     if (!item || item.type !== 'VEVENT') continue;
 
     const summary = (typeof item.summary === 'string' ? item.summary : '') || 'Untitled';
+    // Neptun exports administrative task / grade-publication windows ("… - Feladat - Határidő: …") as VEVENTs
+    // spanning up to 2+ months; skip them so only real classes/exams enter the schedule.
+    if (/ - Feladat - Határidő:/i.test(summary)) continue;
+
     const description = typeof item.description === 'string' ? item.description : undefined;
     const room = typeof item.location === 'string' && item.location.trim().length > 0
       ? item.location.trim()

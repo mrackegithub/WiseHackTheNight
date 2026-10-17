@@ -10,8 +10,8 @@ export interface CoreSeedResult {
 
 const BUDAPEST_CENTER = { lat: 47.4979, lng: 19.0402 };
 
-// The only subjects in the catalogue and the only ones test accounts take (first semester, BME VIK).
-// Aliases are the names Neptun timetables use, so a connected Neptun calendar links to these.
+// The subjects in the catalogue and the ones test accounts take (first semester, BME VIK).
+// Aliases are the Hungarian/English names Neptun timetables use, so a connected Neptun calendar links to these.
 const SUBJECTS_DATA = [
   { code: 'BME-CALC1', name: 'Calculus 1', aliases: ['Analízis 1 informatikusoknak', 'Analízis 1', 'Calculus 1 for Informaticians', 'Calculus I'] },
   {
@@ -22,6 +22,13 @@ const SUBJECTS_DATA = [
   { code: 'BME-DIGIT1', name: 'Digital Design', aliases: ['Digitális technika', 'Digitális technika 1', 'Digital Design 1'] },
   { code: 'BME-EE1', name: 'Basics of Electrical Engineering', aliases: ['Villamos alapismeretek', 'Basics of Electrical Engineering 1'] },
   { code: 'BME-PROG1', name: 'Basics of Programming', aliases: ['A programozás alapjai 1', 'A programozás alapjai', 'Basics of Programming 1'] },
+  { code: 'BME-PHYS1', name: 'Basics of Physics', aliases: ['Fizika alapismeretek', 'Fizika 1', 'Basics of Physics 1'] },
+  { code: 'BME-SEM1', name: 'Study Group Seminar 1', aliases: ['Tanköri foglalkozás 1', 'Tanköri foglalkozás', 'Homeroom Seminar 1'] },
+  {
+    code: 'BME-HUN1',
+    name: 'Hungarian Language and Culture 1',
+    aliases: ['Hungarian Language and Culture for SH Students 1', 'Hungarian Language and Culture for SH Students 1.'],
+  },
 ];
 
 // 25 Interest tags
@@ -208,11 +215,11 @@ export async function seedCore(prisma: PrismaClient): Promise<CoreSeedResult> {
 
     userIds.push(user.id);
 
-    // Pick 2-5 of the five subjects
-    // Make sure the first 24 users share subjects with demoUser to guarantee great match scores
-    const userSubjs = i < 25
-      ? [progSubject, calcSubject, ...faker.helpers.arrayElements(otherSubjects, { min: 1, max: 2 })]
-      : faker.helpers.arrayElements(createdSubjects, { min: 2, max: 5 });
+    // Pick 4-8 of the subjects so every course has ~120+ classmates
+    // Make sure the first 40 users share all subjects with demoUser to guarantee great match scores
+    const userSubjs = i < 40
+      ? createdSubjects
+      : faker.helpers.arrayElements(createdSubjects, { min: 4, max: 8 });
 
     // Complementary role for the first 11 users: NEEDS_HELP in Programming (demo is CAN_EXPLAIN), CAN_EXPLAIN in Calc (demo is NEEDS_HELP)
     await prisma.userSubject.createMany({
@@ -454,18 +461,21 @@ export async function seedCore(prisma: PrismaClient): Promise<CoreSeedResult> {
     });
   }
 
-  // Pending likes: top-ranked classmates (complementary roles, users 3–14) already liked the demo user in
-  // Programming and Calculus, so swiping right on them in the deck produces the "It's a match!" moment.
-  // (The matches above are already complete, so without these the demo deck never matches.)
+  // Pending likes: top-ranked classmates (users 3–45) already liked the demo user and real users in
+  // every subject, so swiping right on them in the deck produces the "It's a match!" moment.
+  const realUsers = await prisma.user.findMany({ where: { isSeed: false }, select: { id: true } });
+  const likedTargets = [demoUser.id, ...realUsers.map((u) => u.id)];
   await prisma.swipe.createMany({
-    data: userIds.slice(3, 15).flatMap((swiperId) =>
-      [progSubject.id, calcSubject.id].map((subjectId) => ({
-        swiperId,
-        targetKind: 'user',
-        targetId: demoUser.id,
-        subjectId,
-        direction: 'LIKE' as const,
-      })),
+    data: likedTargets.flatMap((targetId) =>
+      userIds.slice(3, 45).flatMap((swiperId) =>
+        subjectIds.map((subjectId) => ({
+          swiperId,
+          targetKind: 'user',
+          targetId,
+          subjectId,
+          direction: 'LIKE' as const,
+        })),
+      ),
     ),
     skipDuplicates: true,
   });

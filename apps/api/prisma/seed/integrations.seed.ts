@@ -383,6 +383,24 @@ const COURSES: Record<string, { name: string; room: string; lectures: Slot[]; pr
     lectures: [{ weekday: 1, period: 1 }],
     practices: [{ weekday: 2, period: 3 }, { weekday: 3, period: 4 }, { weekday: 5, period: 3 }, { weekday: 4, period: 4 }],
   },
+  'BME-PHYS1': {
+    name: 'Basics of Physics',
+    room: 'K.I.50',
+    lectures: [{ weekday: 4, period: 2 }],
+    practices: [{ weekday: 4, period: 3 }, { weekday: 2, period: 1 }, { weekday: 5, period: 1 }],
+  },
+  'BME-SEM1': {
+    name: 'Study Group Seminar 1',
+    room: 'IB 110',
+    lectures: [],
+    practices: [{ weekday: 2, period: 2 }, { weekday: 3, period: 3 }, { weekday: 5, period: 2 }],
+  },
+  'BME-HUN1': {
+    name: 'Hungarian Language and Culture 1',
+    room: 'Északi 0.83',
+    lectures: [],
+    practices: [{ weekday: 2, period: 3 }, { weekday: 4, period: 3 }],
+  },
 };
 
 type Window = { weekday: number; startTime: string; endTime: string };

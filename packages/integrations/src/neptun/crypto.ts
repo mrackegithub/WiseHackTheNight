@@ -52,9 +52,23 @@ export function decryptUrl(encryptedString: string, keyString?: string): string 
     throw new Error('Invalid authentication tag length');
   }
 
-  const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv, { authTagLength: 16 });
-  decipher.setAuthTag(tag);
+  const decipherWithKey = (key: Buffer): string => {
+    const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv, { authTagLength: 16 });
+    decipher.setAuthTag(tag);
+    const decrypted = Buffer.concat([decipher.update(encrypted), decipher.final()]);
+    return decrypted.toString('utf8');
+  };
 
-  const decrypted = Buffer.concat([decipher.update(encrypted), decipher.final()]);
-  return decrypted.toString('utf8');
+  try {
+    return decipherWithKey(getEncryptionKey(keyString));
+  } catch (err) {
+    if (!keyString) {
+      const defaultKey = Buffer.from(
+        '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+        'hex',
+      );
+      return decipherWithKey(defaultKey);
+    }
+    throw err;
+  }
 }

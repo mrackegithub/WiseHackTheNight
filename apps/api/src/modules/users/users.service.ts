@@ -3,6 +3,8 @@ import { notFound, validationError } from '../../core/errors.js';
 import type { GeoPointInput, PreferencesInput, UpdateMeInput, UserSubjectInput } from './users.schemas.js';
 
 export async function getMe(prisma: PrismaClient, userId: string) {
+  await refreshOnboarding(prisma, userId);
+
   const user = await prisma.user.findUnique({
     where: { id: userId },
     include: {

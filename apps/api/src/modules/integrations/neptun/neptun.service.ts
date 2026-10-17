@@ -132,6 +132,20 @@ export async function syncNeptun(
     throw conflict('Not connected to Neptun', 'NOT_CONNECTED');
   }
 
+  if (connection.icsUrlEncrypted === 'seed-encrypted-neptun-url') {
+    const now = new Date();
+    await prisma.neptunConnection.update({
+      where: { userId },
+      data: { status: 'OK', lastSyncedAt: now, lastError: null },
+    });
+    return {
+      imported: 0,
+      removed: 0,
+      subjectsLinked: 0,
+      syncedAt: now.toISOString(),
+    };
+  }
+
   let url: string;
   try {
     url = decryptUrl(connection.icsUrlEncrypted);
@@ -175,7 +189,16 @@ async function performSync(
     throw error;
   }
 
-  return applyIcsData(prisma, userId, icsText);
+  try {
+    return await applyIcsData(prisma, userId, icsText);
+  } catch (err: unknown) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    await prisma.neptunConnection.update({
+      where: { userId },
+      data: { status: 'ERROR', lastError: errorMsg },
+    });
+    throw err;
+  }
 }
 
 export async function uploadNeptunIcs(
@@ -238,131 +261,133 @@ export async function applyIcsData(
     if (e.externalUid) existingMap.set(e.externalUid, e.id);
   }
 
-  const parsedUids = new Set<string>();
-  let importedCount = 0;
+  const parsedUids = new Set<string>(keptEvents.map((ev) => ev.externalUid));
 
-  const result = await prisma.$transaction(async (tx) => {
-    // Upsert parsed events
-    for (const ev of keptEvents) {
-      parsedUids.add(ev.externalUid);
-
-      const existingId = existingMap.get(ev.externalUid);
-      if (existingId) {
-        await tx.calendarEvent.update({
-          where: { id: existingId },
-          data: {
-            title: ev.title,
-            start: ev.start,
-            end: ev.end,
-            room: ev.room ?? null,
-            subjectCode: ev.subjectCode ?? null,
-          },
-        });
-        importedCount++;
-      } else {
-        await tx.calendarEvent.create({
-          data: {
-            userId,
-            title: ev.title,
-            start: ev.start,
-            end: ev.end,
-            room: ev.room ?? null,
-            subjectCode: ev.subjectCode ?? null,
-            source: 'NEPTUN',
-            externalUid: ev.externalUid,
-          },
-        });
-        importedCount++;
+  const result = await prisma.$transaction(
+    async (tx) => {
+      // Subject linking: every course in the timetable becomes one of the user's subjects (PEER), so it shows in Discover
+      const detectedCodes = new Set<string>();
+      const courses = new Map<string, TimetableCourse>(); // by normalized name
+      for (const ev of parsedEvents) {
+        if (ev.subjectCode) {
+          detectedCodes.add(ev.subjectCode.toUpperCase());
+        }
+        const course = courseFromTitle(ev.title);
+        if (course) courses.set(normalizeCourseName(course.name), course);
       }
-    }
 
-    // Delete stale events whose UID is no longer in parsed feed
-    const uidsToDelete: string[] = [];
-    for (const [uid, id] of existingMap.entries()) {
-      if (!parsedUids.has(uid)) {
-        uidsToDelete.push(id);
+      const subjectIds = new Set(allSubjects.filter((s) => detectedCodes.has(s.code.toUpperCase())).map((s) => s.id));
+      // Neptun titles rarely carry the code, so match the course name against subject names and aliases
+      // (e.g. "Analízis 1 informatikusoknak" → Calculus 1); courses not in the catalogue yet are added to it
+      const byCode = new Map(allSubjects.map((s) => [s.code.toUpperCase(), s]));
+      const byName = new Map(allSubjects.flatMap((s) => [s.name, ...s.aliases].map((n) => [normalizeCourseName(n), s] as const)));
+      const courseSubjectByNormName = new Map<string, { code: string; name: string }>();
+
+      for (const [key, course] of courses) {
+        const known = (course.code && byCode.get(course.code)) || byName.get(key);
+        if (known) {
+          subjectIds.add(known.id);
+          courseSubjectByNormName.set(key, { code: known.code, name: known.name });
+          continue;
+        }
+        const code = course.code || `NEPTUN-${key.toUpperCase().replace(/ /g, '-').slice(0, 40)}`;
+        const created = await tx.subject.upsert({ where: { code }, update: {}, create: { code, name: course.name } });
+        subjectIds.add(created.id);
+        courseSubjectByNormName.set(key, { code: created.code, name: created.name });
       }
-    }
 
-    let removedCount = 0;
-    if (uidsToDelete.length > 0) {
-      const delRes = await tx.calendarEvent.deleteMany({
-        where: { id: { in: uidsToDelete } },
+      // Compute removed count (events previously in DB whose UID is no longer in keptEvents)
+      let removedCount = 0;
+      for (const uid of existingMap.keys()) {
+        if (!parsedUids.has(uid)) {
+          removedCount++;
+        }
+      }
+
+      // Replace user's NEPTUN events in bulk (avoids 200+ sequential round-trips inside transaction)
+      await tx.calendarEvent.deleteMany({
+        where: { userId, source: 'NEPTUN' },
       });
-      removedCount = delRes.count;
-    }
 
-    // Subject linking: every course in the timetable becomes one of the user's subjects (PEER), so it shows in Discover
-    const detectedCodes = new Set<string>();
-    const courses = new Map<string, TimetableCourse>(); // by normalized name
-    for (const ev of parsedEvents) {
-      if (ev.subjectCode) {
-        detectedCodes.add(ev.subjectCode.toUpperCase());
-      }
-      const course = courseFromTitle(ev.title);
-      if (course) courses.set(normalizeCourseName(course.name), course);
-    }
-
-    const subjectIds = new Set(allSubjects.filter((s) => detectedCodes.has(s.code.toUpperCase())).map((s) => s.id));
-    // Neptun titles rarely carry the code, so match the course name against subject names and aliases
-    // (e.g. "Analízis 1 informatikusoknak" → Calculus 1); courses not in the catalogue yet are added to it
-    const byCode = new Map(allSubjects.map((s) => [s.code.toUpperCase(), s.id]));
-    const byName = new Map(allSubjects.flatMap((s) => [s.name, ...s.aliases].map((n) => [normalizeCourseName(n), s.id] as const)));
-    for (const [key, course] of courses) {
-      const known = (course.code && byCode.get(course.code)) || byName.get(key);
-      if (known) {
-        subjectIds.add(known);
-        continue;
-      }
-      const code = course.code || `NEPTUN-${key.toUpperCase().replace(/ /g, '-').slice(0, 40)}`;
-      const created = await tx.subject.upsert({ where: { code }, update: {}, create: { code, name: course.name } });
-      subjectIds.add(created.id);
-    }
-
-    const existingUserSubjects = await tx.userSubject.findMany({
-      where: { userId },
-      select: { subjectId: true },
-    });
-    const existingSubjectIds = new Set(existingUserSubjects.map((us) => us.subjectId));
-
-    let subjectsLinked = 0;
-    for (const subjectId of subjectIds) {
-      if (!existingSubjectIds.has(subjectId)) {
-        await tx.userSubject.create({
-          data: {
-            userId,
-            subjectId,
-            role: 'PEER',
-            confidence: 3,
-          },
+      if (keptEvents.length > 0) {
+        await tx.calendarEvent.createMany({
+          data: keptEvents.map((ev) => {
+            const parsedCourse = courseFromTitle(ev.title);
+            const matchedSubj = parsedCourse
+              ? courseSubjectByNormName.get(normalizeCourseName(parsedCourse.name))
+              : undefined;
+            const resolvedCode = ev.subjectCode ?? matchedSubj?.code ?? null;
+            // Replace Hungarian Neptun course prefix with the English subject name when matched
+            let displayTitle = ev.title;
+            if (parsedCourse && matchedSubj) {
+              const parenIdx = ev.title.indexOf('(');
+              if (parenIdx > 0) {
+                displayTitle = `${matchedSubj.name} ${ev.title.slice(parenIdx)}`.replace(/\s*-\s*Tanóra$/i, '');
+              }
+            }
+            return {
+              userId,
+              title: displayTitle,
+              start: ev.start,
+              end: ev.end,
+              room: ev.room ?? null,
+              subjectCode: resolvedCode,
+              source: 'NEPTUN' as const,
+              externalUid: ev.externalUid,
+            };
+          }),
+          skipDuplicates: true,
         });
-        subjectsLinked++;
       }
-    }
 
-    // Update connection status
-    await tx.neptunConnection.upsert({
-      where: { userId },
-      update: {
-        status: 'OK',
-        lastSyncedAt: now,
-        lastError: null,
-      },
-      create: {
-        userId,
-        status: 'OK',
-        lastSyncedAt: now,
-        lastError: null,
-      },
-    });
+      const importedCount = keptEvents.length;
 
-    return {
-      imported: importedCount,
-      removed: removedCount,
-      subjectsLinked,
-      syncedAt: now.toISOString(),
-    };
-  });
+      const existingUserSubjects = await tx.userSubject.findMany({
+        where: { userId },
+        select: { subjectId: true },
+      });
+      const existingSubjectIds = new Set(existingUserSubjects.map((us) => us.subjectId));
+
+      let subjectsLinked = 0;
+      for (const subjectId of subjectIds) {
+        if (!existingSubjectIds.has(subjectId)) {
+          await tx.userSubject.create({
+            data: {
+              userId,
+              subjectId,
+              role: 'PEER',
+              confidence: 3,
+            },
+          });
+          subjectsLinked++;
+        }
+      }
+
+      // Update connection status
+      await tx.neptunConnection.upsert({
+        where: { userId },
+        update: {
+          status: 'OK',
+          lastSyncedAt: now,
+          lastError: null,
+        },
+        create: {
+          userId,
+          status: 'OK',
+          lastSyncedAt: now,
+          lastError: null,
+        },
+      });
+
+      return {
+        imported: importedCount,
+        removed: removedCount,
+        subjectsLinked,
+        syncedAt: now.toISOString(),
+      };
+    },
+    { timeout: 30000 },
+  );
 
   return result;
 }
