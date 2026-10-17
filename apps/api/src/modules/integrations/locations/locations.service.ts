@@ -1,7 +1,7 @@
 import type { PrismaClient } from '@prisma/client';
 import { geocoder, geoService } from '@sgm/integrations';
 import type { paths } from '@sgm/contracts';
-import { notFound } from '../../../core/errors.js';
+import { HttpError, notFound } from '../../../core/errors.js';
 import type {
   GeocodeQuery,
   ListLocationsQuery,
@@ -71,7 +71,13 @@ export async function geocodeAddress(
   query: GeocodeQuery,
   fetcher?: typeof fetch,
 ): Promise<GeoPointDto[]> {
-  const results = await geocoder.geocode(query.q, { fetcher });
+  let results;
+  try {
+    results = await geocoder.geocode(query.q, { fetcher });
+  } catch (err) {
+    // the provider is down, blocked us or rate-limited us: a 502, not an unexpected 500
+    throw new HttpError(502, 'GEOCODER_UNAVAILABLE', `Address search is unavailable: ${err instanceof Error ? err.message : String(err)}`);
+  }
   return results.map((r) => ({
     lat: r.lat,
     lng: r.lng,

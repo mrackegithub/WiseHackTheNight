@@ -95,6 +95,7 @@ export async function disconnectNeptun(prisma: PrismaClient, userId: string): Pr
     await tx.calendarEvent.deleteMany({
       where: { userId, source: 'NEPTUN' },
     });
+    await tx.removedNeptunEvent.deleteMany({ where: { userId } });
 
     await tx.neptunConnection.upsert({
       where: { userId },
@@ -216,6 +217,10 @@ export async function applyIcsData(
     knownSubjectCodes,
     maxWeeksAhead: 16,
   });
+  // classes the user removed from their calendar stay removed
+  const removed = await prisma.removedNeptunEvent.findMany({ where: { userId }, select: { externalUid: true } });
+  const removedUids = new Set(removed.map((r) => r.externalUid));
+  const keptEvents = parsedEvents.filter((ev) => !removedUids.has(ev.externalUid));
 
   const now = new Date();
 
@@ -235,7 +240,7 @@ export async function applyIcsData(
 
   const result = await prisma.$transaction(async (tx) => {
     // Upsert parsed events
-    for (const ev of parsedEvents) {
+    for (const ev of keptEvents) {
       parsedUids.add(ev.externalUid);
 
       const existingId = existingMap.get(ev.externalUid);

@@ -32,6 +32,8 @@ export interface MockUser {
     windows: Schemas['WeeklyWindow'][];
     /** Busy blocks the user added by hand (source MANUAL). */
     manualEvents: Schemas['CalendarEvent'][];
+    /** Neptun class occurrences the user removed from their calendar. */
+    removedClassIds?: string[];
   };
   swipes: MockSwipe[];
   matches: Schemas['Match'][];

@@ -10,15 +10,33 @@ import { toast } from '../../lib/toast';
 import { eventStyle } from './event-style';
 import { calendarKeys } from './queries';
 
-/** Details of a calendar block; your own busy times can be removed from here. */
+/** What removing does for each source (DELETE /me/schedule/{id}). */
+const removal: Record<Schemas['CalendarEvent']['source'], { note: string | null; button: string; done: string }> = {
+  MANUAL: { note: null, button: 'Remove from calendar', done: 'Removed from your calendar.' },
+  NEPTUN: {
+    note: 'Imported from your Neptun calendar. Removing it hides this class here and future Neptun syncs won’t bring it back.',
+    button: 'Remove this class',
+    done: 'Class removed from your calendar.',
+  },
+  STUDY_SESSION: {
+    note: 'A study session of one of your groups. Removing it cancels the session for everyone in the group.',
+    button: 'Cancel session',
+    done: 'Study session cancelled for the group.',
+  },
+};
+
+/** Details of a calendar block, with a button to remove it whatever its source. */
 export function EventDetailsModal({ event, onClose }: { event: Schemas['CalendarEvent']; onClose: () => void }) {
   const queryClient = useQueryClient();
   const style = eventStyle(event);
+  const copy = removal[event.source];
   const remove = useMutation({
     mutationFn: () => unwrap(api.DELETE('/me/schedule/{eventId}', { params: { path: { eventId: event.id } } })),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: calendarKeys.all });
-      toast.info(`Removed "${event.title}" from your calendar.`);
+      if (event.source === 'STUDY_SESSION') void queryClient.invalidateQueries({ queryKey: ['groups'] });
+      if (event.source === 'NEPTUN') void queryClient.invalidateQueries({ queryKey: ['me', 'neptun'] }); // class count
+      toast.info(copy.done);
       onClose();
     },
   });
@@ -32,16 +50,12 @@ export function EventDetailsModal({ event, onClose }: { event: Schemas['Calendar
           {event.room && <span className="text-slate-500">· {event.room}</span>}
         </p>
 
-        {event.source === 'NEPTUN' && (
-          <p className="rounded-md bg-slate-50 px-3 py-2 text-sm text-slate-600">
-            Imported from your Neptun calendar, so it updates when Neptun changes. To stop using Neptun, disconnect it at the top of this page.
-          </p>
-        )}
+        {copy.note && <p className="rounded-md bg-slate-50 px-3 py-2 text-sm text-slate-600">{copy.note}</p>}
         {event.source === 'STUDY_SESSION' && (
-          <p className="rounded-md bg-slate-50 px-3 py-2 text-sm text-slate-600">
-            A study session of one of your groups. Change it on the{' '}
+          <p className="text-sm text-slate-600">
+            To move it instead, go to your{' '}
             <Link to="/groups" className="font-medium text-indigo-700 hover:underline">
-              group page
+              groups
             </Link>
             .
           </p>
@@ -51,11 +65,9 @@ export function EventDetailsModal({ event, onClose }: { event: Schemas['Calendar
           <Button variant="ghost" onClick={onClose} data-autofocus>
             Close
           </Button>
-          {event.source === 'MANUAL' && (
-            <Button variant="danger" onClick={() => remove.mutate()} loading={remove.isPending}>
-              Remove from calendar
-            </Button>
-          )}
+          <Button variant="danger" onClick={() => remove.mutate()} loading={remove.isPending}>
+            {copy.button}
+          </Button>
         </div>
       </div>
     </Modal>

@@ -57,6 +57,7 @@ export const neptunHandlers = [
     authed((user) => {
       user.calendar.icsUrl = null;
       user.calendar.timetable = [];
+      user.calendar.removedClassIds = [];
       user.calendar.neptun = { connected: false, status: 'NOT_CONNECTED', lastSyncedAt: null, lastError: null, eventCount: 0 };
       return new HttpResponse(null, { status: 204 });
     }),

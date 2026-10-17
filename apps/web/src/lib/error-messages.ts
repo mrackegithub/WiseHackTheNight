@@ -25,6 +25,8 @@ export function messageForError(error: unknown): string {
       return 'That room was just booked by someone else. Pick another slot or room.';
     case 'NEPTUN_UNREACHABLE':
       return "Couldn't reach Neptun. Check your calendar link or try again later.";
+    case 'GEOCODER_UNAVAILABLE':
+      return "Address search isn't working right now. Click the map to set the spot instead.";
     default:
       return error.message || 'Something went wrong. Please try again.';
   }

@@ -3,7 +3,8 @@ import { http, HttpResponse } from 'msw';
 import type { Schemas } from '@sgm/contracts';
 import { expandTimetable, freeSlots } from '../calendar';
 import { toApiTime, ZONE } from '../../lib/time';
-import { nextId, type MockUser } from '../db';
+import { db, nextId, type MockUser } from '../db';
+import { isMember } from '../groups';
 import { sessionEvents } from '../sessions';
 import { apiError, authed, url } from '../utils';
 
@@ -23,13 +24,15 @@ const overlapsRange = (e: { start: string; end: string }, from: DateTime, to: Da
 /** Classes from Neptun, the user's own busy blocks, and planned study sessions of their groups. */
 const busyEvents = (user: MockUser, from: DateTime, to: DateTime) =>
   [
-    ...expandTimetable(user.calendar.timetable, from, to),
+    ...expandTimetable(user.calendar.timetable, from, to).filter((e) => !user.calendar.removedClassIds?.includes(e.id)),
     ...user.calendar.manualEvents.filter((e) => overlapsRange(e, from, to)),
     ...sessionEvents(user.me.id, from, to),
   ].sort((a, b) => a.start.localeCompare(b.start));
 
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 const CATEGORIES: Schemas['EventCategory'][] = ['CLASS', 'STUDY', 'WORK', 'OTHER'];
+/** Ids expandTimetable gives Neptun class occurrences. */
+const CLASS_ID_PREFIX = '00000000-0000-4000-8003-';
 
 export const calendarHandlers = [
   http.get(
@@ -77,9 +80,22 @@ export const calendarHandlers = [
   http.delete(
     url('/me/schedule/:eventId'),
     authed((user, { params }) => {
-      const before = user.calendar.manualEvents.length;
-      user.calendar.manualEvents = user.calendar.manualEvents.filter((e) => e.id !== params.eventId);
-      if (user.calendar.manualEvents.length === before) return apiError(404, 'NOT_FOUND', 'Busy time not found');
+      const id = String(params.eventId);
+      const cal = user.calendar;
+      const session = [...db.groups.values()].filter((g) => isMember(g, user.me.id)).flatMap((g) => g.sessions).find((s) => s.id === id && s.status === 'PLANNED');
+      if (cal.manualEvents.some((e) => e.id === id)) {
+        cal.manualEvents = cal.manualEvents.filter((e) => e.id !== id);
+      } else if (id.startsWith(CLASS_ID_PREFIX) && !cal.removedClassIds?.includes(id)) {
+        // a Neptun class occurrence: remembered so it stays hidden
+        cal.removedClassIds = [...(cal.removedClassIds ?? []), id];
+      } else if (session) {
+        // a study session: cancelled for the whole group, like the real API
+        session.status = 'CANCELLED';
+        const booking = session.bookingId ? db.bookings.get(session.bookingId) : undefined;
+        if (booking) booking.status = 'CANCELLED';
+      } else {
+        return apiError(404, 'NOT_FOUND', 'Event not found');
+      }
       return new HttpResponse(null, { status: 204 });
     }),
   ),
