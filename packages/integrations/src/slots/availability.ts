@@ -146,14 +146,21 @@ export class AvailabilityServiceImpl implements AvailabilityService {
       busyByUser.set(b.userId, list);
     }
 
+    // Most people share the same weekly hours (often the defaults): expand each distinct set once, not per user
+    const expandedByWindows = new Map<string, TimeSlot[]>();
     for (const userId of userIds) {
       const userWindows = windowsByUser.get(userId);
       const activeWindows =
         userWindows && userWindows.length > 0 ? userWindows : DEFAULT_WEEKLY_WINDOWS;
       const userBusy = busyByUser.get(userId) ?? [];
 
-      const expanded = expandWeeklyWindows(activeWindows, range);
-      const free = subtractSlots(expanded, userBusy, minMinutes);
+      const key = activeWindows.map((w) => `${w.weekday} ${w.startTime}-${w.endTime}`).sort().join(',');
+      let expanded = expandedByWindows.get(key);
+      if (!expanded) {
+        expanded = expandWeeklyWindows(activeWindows, range);
+        expandedByWindows.set(key, expanded);
+      }
+      const free = subtractSlots(expanded, userBusy, minMinutes); // copies its input, so sharing is safe
       result.set(userId, free);
     }
 

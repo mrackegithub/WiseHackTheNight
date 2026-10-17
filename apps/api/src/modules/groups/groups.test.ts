@@ -33,7 +33,7 @@ describe('B8: Groups Module', () => {
     demoUserId = app.jwt.decode<{ sub: string }>(demoToken)!.sub;
 
     const subject = await app.prisma.subject.findUnique({
-      where: { code: 'IP-18AA1E' },
+      where: { code: 'BME-PROG1' },
     });
     algoSubjectId = subject!.id;
 

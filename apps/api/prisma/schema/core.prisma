@@ -81,9 +81,10 @@ model Preferences {
 
 model Subject {
   id      String  @id @default(uuid()) @db.Uuid
-  code    String  @unique // Neptun course code
+  code    String   @unique // Neptun course code
   name    String
   credits Int?
+  aliases String[] @default([]) // other names timetables use, e.g. the Hungarian Neptun title
 
   users  UserSubject[]
   groups Group[]

@@ -20,9 +20,17 @@ describe('B4: Core Seed', () => {
     expect(userCount).toBe(200);
   });
 
-  it('creates 40 subjects with valid codes and credits', async () => {
-    const subjectCount = await prisma.subject.count();
-    expect(subjectCount).toBeGreaterThanOrEqual(40);
+  it('leaves exactly the five first-semester subjects, and test accounts take only those', async () => {
+    const subjects = await prisma.subject.findMany();
+    expect(subjects.map((s) => s.name).sort()).toEqual([
+      'Basics of Electrical Engineering',
+      'Basics of Programming',
+      'Calculus 1',
+      'Digital Design',
+      'Introduction to Theory of Computing',
+    ]);
+    const outside = await prisma.userSubject.count({ where: { user: { isSeed: true }, subjectId: { notIn: subjects.map((s) => s.id) } } });
+    expect(outside).toBe(0);
   });
 
   it('creates 25 interests', async () => {
@@ -58,10 +66,10 @@ describe('B4: Core Seed', () => {
 
     // Verify subjects
     expect(demo?.subjects.length).toBeGreaterThanOrEqual(2);
-    const algoSubj = demo?.subjects.find((s) => s.subject.code === 'IP-18AA1E');
-    expect(algoSubj?.role).toBe('CAN_EXPLAIN');
+    const progSubj = demo?.subjects.find((s) => s.subject.code === 'BME-PROG1');
+    expect(progSubj?.role).toBe('CAN_EXPLAIN');
 
-    const calcSubj = demo?.subjects.find((s) => s.subject.code === 'BMETE90AX00');
+    const calcSubj = demo?.subjects.find((s) => s.subject.code === 'BME-CALC1');
     expect(calcSubj?.role).toBe('NEEDS_HELP');
 
     // Verify demo user has matches
