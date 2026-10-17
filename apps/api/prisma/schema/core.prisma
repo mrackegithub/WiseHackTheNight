@@ -48,6 +48,7 @@ model User {
   memberships      GroupMember[]
   swipesGiven      Swipe[]        @relation("swiper")
   refreshTokens    RefreshToken[]
+  invitesCreated   GroupInvite[]
 
   // ── integration back-relations (models live in integrations.prisma) ──
   neptunConnection    NeptunConnection?
@@ -140,15 +141,28 @@ model Group {
   description String?
   subjectId   String   @db.Uuid
   maxSize     Int
-  isOpen      Boolean  @default(true)
+  isOpen      Boolean  @default(true) // listed in Discover and joinable by anyone; false = invite-only
   createdAt   DateTime @default(now())
   subject     Subject  @relation(fields: [subjectId], references: [id])
   members     GroupMember[]
   sessions    StudySession[]
   matches     Match[]
+  invites     GroupInvite[]
 
   // integration back-relation
   bookings Booking[]
+}
+
+// A shareable link to join a group, also an invite-only one; the token is the secret part of the URL
+model GroupInvite {
+  id          String   @id @default(uuid()) @db.Uuid
+  token       String   @unique
+  groupId     String   @db.Uuid
+  createdById String   @db.Uuid
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
+  group       Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  createdBy   User     @relation(fields: [createdById], references: [id], onDelete: Cascade)
 }
 
 model GroupMember {

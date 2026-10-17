@@ -4,6 +4,7 @@ import { validate } from '../../core/validation.js';
 import {
   createGroupSchema,
   groupIdParamsSchema,
+  inviteTokenParamsSchema,
   suggestedSlotsQuerySchema,
 } from './groups.schemas.js';
 import * as groupsService from './groups.service.js';
@@ -13,6 +14,9 @@ type CreateGroupResponse = paths['/groups']['post']['responses'][201]['content']
 type GetGroupResponse = paths['/groups/{groupId}']['get']['responses'][200]['content']['application/json'];
 type JoinGroupResponse = paths['/groups/{groupId}/members']['post']['responses'][200]['content']['application/json'];
 type SuggestedSlotsResponse = paths['/groups/{groupId}/suggested-slots']['get']['responses'][200]['content']['application/json'];
+type CreateInviteResponse = paths['/groups/{groupId}/invites']['post']['responses'][201]['content']['application/json'];
+type InvitePreviewResponse = paths['/invites/{token}']['get']['responses'][200]['content']['application/json'];
+type AcceptInviteResponse = paths['/invites/{token}/accept']['post']['responses'][200]['content']['application/json'];
 
 const groupsRoutes: FastifyPluginAsync = async (app) => {
   app.get('/groups', { preHandler: [app.authenticate] }, async (req): Promise<ListMyGroupsResponse> => {
@@ -40,6 +44,23 @@ const groupsRoutes: FastifyPluginAsync = async (app) => {
     const { groupId } = validate(groupIdParamsSchema, req.params);
     await groupsService.leaveGroup(app.prisma, req.user.sub, groupId);
     reply.status(204).send();
+  });
+
+  app.post('/groups/:groupId/invites', { preHandler: [app.authenticate] }, async (req, reply): Promise<CreateInviteResponse> => {
+    const { groupId } = validate(groupIdParamsSchema, req.params);
+    const invite = await groupsService.createGroupInvite(app.prisma, req.user.sub, groupId);
+    reply.status(201);
+    return invite;
+  });
+
+  app.get('/invites/:token', { preHandler: [app.authenticate] }, async (req): Promise<InvitePreviewResponse> => {
+    const { token } = validate(inviteTokenParamsSchema, req.params);
+    return groupsService.getInvite(app.prisma, req.user.sub, token);
+  });
+
+  app.post('/invites/:token/accept', { preHandler: [app.authenticate] }, async (req): Promise<AcceptInviteResponse> => {
+    const { token } = validate(inviteTokenParamsSchema, req.params);
+    return groupsService.acceptInvite(app.prisma, req.user.sub, token);
   });
 
   app.get('/groups/:groupId/suggested-slots', { preHandler: [app.authenticate] }, async (req): Promise<SuggestedSlotsResponse> => {

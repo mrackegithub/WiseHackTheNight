@@ -386,6 +386,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/groups/{groupId}/invites": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                groupId: components["parameters"]["GroupId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * @description Creates a link a member sends to the people they choose. Anyone with the link can join while it is valid
+         *     (7 days) and the group has room, including an invite-only group (`isOpen: false`).
+         */
+        post: operations["createGroupInvite"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/invites/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: components["parameters"]["InviteToken"];
+            };
+            cookie?: never;
+        };
+        /** @description The group an invite link leads to and who sent it, so the invited person can decide to join. */
+        get: operations["getInvite"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/invites/{token}/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: components["parameters"]["InviteToken"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Joins the group behind the link. Already a member returns the group unchanged. */
+        post: operations["acceptInvite"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/groups/{groupId}/suggested-slots": {
         parameters: {
             query?: never;
@@ -532,7 +592,7 @@ export interface components {
     schemas: {
         Error: {
             /**
-             * @description Stable, UPPER_SNAKE. e.g. VALIDATION_FAILED, UNAUTHORIZED, NOT_FOUND, GROUP_FULL, SLOT_TAKEN, NEPTUN_UNREACHABLE, GEOCODER_UNAVAILABLE
+             * @description Stable, UPPER_SNAKE. e.g. VALIDATION_FAILED, UNAUTHORIZED, NOT_FOUND, GROUP_FULL, GROUP_CLOSED, INVITE_EXPIRED, SLOT_TAKEN, NEPTUN_UNREACHABLE, GEOCODER_UNAVAILABLE
              * @example GROUP_FULL
              */
             code: string;
@@ -811,7 +871,7 @@ export interface components {
         };
         Group: components["schemas"]["GroupSummary"] & {
             description?: string | null;
-            /** @description Appears in other users' candidate decks */
+            /** @description Appears in other users' candidate decks and anyone can join; false = invite-only (join with an invite link) */
             isOpen: boolean;
             members: components["schemas"]["GroupMember"][];
         };
@@ -821,8 +881,27 @@ export interface components {
             subjectId: string;
             maxSize: number;
             description?: string;
-            /** @default true */
+            /**
+             * @description false = invite-only: hidden from Discover, people join with an invite link
+             * @default true
+             */
             isOpen: boolean;
+        };
+        GroupInvite: {
+            /** @description Secret part of the invite URL, which the web app builds as <origin>/invite/<token> */
+            token: string;
+            /** Format: uuid */
+            groupId: string;
+            /** Format: date-time */
+            expiresAt: string;
+        };
+        InvitePreview: {
+            token: string;
+            /** Format: date-time */
+            expiresAt: string;
+            invitedBy: components["schemas"]["PublicUser"];
+            group: components["schemas"]["Group"];
+            alreadyMember: boolean;
         };
         SuggestedSlot: components["schemas"]["TimeSlot"] & {
             availableMemberIds: string[];
@@ -947,6 +1026,7 @@ export interface components {
         /** @description Max 31 days after `from`. */
         To: string;
         GroupId: string;
+        InviteToken: string;
     };
     requestBodies: never;
     headers: never;
@@ -1704,6 +1784,111 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    createGroupInvite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                groupId: components["parameters"]["GroupId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GroupInvite"];
+                };
+            };
+            /** @description Only members can invite (code FORBIDDEN) */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getInvite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: components["parameters"]["InviteToken"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvitePreview"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            /** @description The link has expired (code INVITE_EXPIRED) */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    acceptInvite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: components["parameters"]["InviteToken"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Joined */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Group"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            /** @description Group full (code GROUP_FULL) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description The link has expired (code INVITE_EXPIRED) */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };

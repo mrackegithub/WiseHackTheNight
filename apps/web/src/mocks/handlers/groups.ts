@@ -6,7 +6,8 @@ import { db, nextId, type MockUser } from '../db';
 import { busyMember } from '../sessions';
 import { suggestedLocations } from '../group-locations';
 import { suggestedSlots } from '../group-slots';
-import { isMember, toGroup, toGroupSummary } from '../groups';
+import { subjectById } from '../data/subjects';
+import { isMember, publicUser, toGroup, toGroupSummary, type MockGroup } from '../groups';
 import { apiError, authed, url } from '../utils';
 
 /** Members see any of their groups; others only open ones (as in the candidate deck). */
@@ -128,4 +129,83 @@ export const groupHandlers = [
       return HttpResponse.json<Schemas['StudySession']>(session, { status: 201 });
     }),
   ),
+
+  http.post(
+    url('/groups'),
+    authed(async (user, { request }) => {
+      const body = (await request.json()) as Schemas['CreateGroupRequest'];
+      const name = body.name?.trim() ?? '';
+      const details: { path: string; issue: string }[] = [];
+      if (name.length < 3 || name.length > 60) details.push({ path: 'name', issue: '3–60 characters' });
+      if (!subjectById(body.subjectId)) details.push({ path: 'subjectId', issue: 'unknown subject' });
+      if (!Number.isInteger(body.maxSize) || body.maxSize < 2 || body.maxSize > 10) details.push({ path: 'maxSize', issue: '2–10' });
+      if (details.length) return apiError(422, 'VALIDATION_FAILED', 'Request validation failed', details);
+      const role = user.subjects.find((s) => s.subject.id === body.subjectId)?.role ?? 'PEER';
+      const group: MockGroup = {
+        id: nextId(),
+        name,
+        description: body.description?.trim() || null,
+        subjectId: body.subjectId,
+        maxSize: body.maxSize,
+        isOpen: body.isOpen ?? true,
+        members: [{ userId: user.me.id, role, isOwner: true, joinedAt: new Date().toISOString() }],
+        sessions: [],
+      };
+      db.groups.set(group.id, group);
+      return HttpResponse.json<Schemas['Group']>(toGroup(group), { status: 201 });
+    }),
+  ),
+
+  http.post(
+    url('/groups/:groupId/invites'),
+    authed((user, { params }) => {
+      const group = db.groups.get(String(params.groupId));
+      if (!group) return notFound();
+      if (!isMember(group, user.me.id)) return apiError(403, 'FORBIDDEN', 'Only members can invite people');
+      const token = crypto.randomUUID().replace(/-/g, '');
+      const expiresAt = new Date(Date.now() + 7 * 24 * 3_600_000).toISOString();
+      db.invites.set(token, { groupId: group.id, createdById: user.me.id, expiresAt });
+      return HttpResponse.json<Schemas['GroupInvite']>({ token, groupId: group.id, expiresAt }, { status: 201 });
+    }),
+  ),
+
+  http.get(
+    url('/invites/:token'),
+    authed((user, { params }) => {
+      const found = validInvite(params.token);
+      if ('error' in found) return found.error;
+      const { invite, group } = found;
+      return HttpResponse.json<Schemas['InvitePreview']>({
+        token: String(params.token),
+        expiresAt: invite.expiresAt,
+        invitedBy: publicUser(invite.createdById),
+        group: toGroup(group),
+        alreadyMember: isMember(group, user.me.id),
+      });
+    }),
+  ),
+
+  http.post(
+    url('/invites/:token/accept'),
+    authed((user, { params }) => {
+      const found = validInvite(params.token);
+      if ('error' in found) return found.error;
+      const { group } = found;
+      if (!isMember(group, user.me.id)) {
+        if (group.members.length >= group.maxSize) return apiError(409, 'GROUP_FULL', 'Group is full');
+        const role = user.subjects.find((s) => s.subject.id === group.subjectId)?.role ?? 'PEER';
+        group.members.push({ userId: user.me.id, role, isOwner: false, joinedAt: new Date().toISOString() });
+      }
+      return HttpResponse.json<Schemas['Group']>(toGroup(group));
+    }),
+  ),
 ];
+
+/** The invite and its group, or the contract's 404 / 410 INVITE_EXPIRED. */
+function validInvite(token: unknown) {
+  const invite = db.invites.get(String(token));
+  const group = invite && db.groups.get(invite.groupId);
+  if (!invite || !group) return { error: apiError(404, 'NOT_FOUND', 'Invite not found') };
+  if (Date.parse(invite.expiresAt) < Date.now()) return { error: apiError(410, 'INVITE_EXPIRED', 'This invite link has expired') };
+  return { invite, group };
+}

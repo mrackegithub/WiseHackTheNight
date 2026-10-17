@@ -54,7 +54,7 @@ export const defaultPreferences = (): Schemas['Preferences'] => ({
 });
 
 /** Bump when the shape below changes, so stale browser-saved mock data is discarded instead of crashing. */
-const DB_VERSION = 9;
+const DB_VERSION = 10;
 
 const userSubject = (subjectId: string, role: Schemas['RoleTag'], confidence = 3): Schemas['UserSubject'] => ({
   subject: subjectById(subjectId)!,
@@ -145,6 +145,8 @@ function seed() {
     users: new Map<string, MockUser>([[demo.me.id, demo]]),
     groups: seedGroups(),
     bookings: new Map<string, Schemas['Booking']>(),
+    /** invite token -> the group it lets people into */
+    invites: new Map<string, { groupId: string; createdById: string; expiresAt: string }>(),
     /** token -> userId */
     accessTokens: new Map<string, string>(),
     refreshTokens: new Map<string, string>(),

@@ -24,6 +24,8 @@ export const routes: RouteObject[] = [
         element: <RequireAuth />,
         children: [
           { path: '/onboarding', lazy: () => import('./pages/OnboardingPage').then((m) => ({ Component: m.OnboardingPage })) },
+          // Invite links work before onboarding, so someone who signs up from a link can join first.
+          { path: '/invite/:token', lazy: () => import('./pages/InvitePage').then((m) => ({ Component: m.InvitePage })) },
           // Everything else needs a finished profile.
           {
             element: <RequireOnboarding />,

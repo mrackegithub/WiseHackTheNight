@@ -631,7 +631,7 @@ export async function swipe(
         throw conflict('Group is full', 'GROUP_FULL');
       }
       if (!group.isOpen) {
-        throw conflict('Group is closed', 'GROUP_CLOSED');
+        throw conflict('This group is invite-only', 'GROUP_CLOSED');
       }
 
       const userSubj = await tx.userSubject.findUnique({
@@ -639,6 +639,7 @@ export async function swipe(
       });
       const role: RoleTag = userSubj?.role ?? 'PEER';
 
+      // isOpen stays the creator's choice; a full group drops out of decks through the member-count filter
       await tx.groupMember.create({
         data: {
           groupId: group.id,
@@ -647,13 +648,6 @@ export async function swipe(
           isOwner: false,
         },
       });
-
-      if (group.members.length + 1 >= group.maxSize) {
-        await tx.group.update({
-          where: { id: group.id },
-          data: { isOpen: false },
-        });
-      }
     }
 
     await tx.swipe.upsert({

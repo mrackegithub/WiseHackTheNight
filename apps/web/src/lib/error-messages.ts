@@ -21,6 +21,10 @@ export function messageForError(error: unknown): string {
       return "We couldn't find what you were looking for.";
     case 'GROUP_FULL':
       return 'This group is already full.';
+    case 'GROUP_CLOSED':
+      return 'This group is invite-only. Ask a member for an invite link.';
+    case 'INVITE_EXPIRED':
+      return 'This invite link has expired. Ask for a new one.';
     case 'SLOT_TAKEN':
       return 'That room was just booked by someone else. Pick another slot or room.';
     case 'NEPTUN_UNREACHABLE':

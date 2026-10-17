@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { useMutation } from '@tanstack/react-query';
-import { Link } from 'react-router';
+import { Link, useLocation } from 'react-router';
 import type { Schemas } from '@sgm/contracts';
 import { api } from '../api/client';
 import { ApiError, unwrap } from '../api/errors';
@@ -17,6 +17,7 @@ import { usePageTitle } from '../hooks/usePageTitle';
 export function LoginPage() {
   usePageTitle('Log in');
   const { login } = useAuth();
+  const location = useLocation();
   const [values, setValues] = useState({ email: '', password: '' });
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
 
@@ -47,7 +48,8 @@ export function LoginPage() {
       footer={
         <>
           New here?{' '}
-          <Link to="/register" className="font-medium text-indigo-700 hover:underline">
+          {/* keeps where the user was headed (e.g. an invite link) through registration */}
+          <Link to="/register" state={location.state} className="font-medium text-indigo-700 hover:underline">
             Create an account
           </Link>
         </>
