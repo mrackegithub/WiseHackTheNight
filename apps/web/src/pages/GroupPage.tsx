@@ -1,11 +1,12 @@
-import { useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router';
+import { useEffect, useState } from 'react';
+import { Link, useLocation, useNavigate, useParams } from 'react-router';
 import type { Schemas } from '@sgm/contracts';
 import { ApiError } from '../api/errors';
 import { Button } from '../components/form/Button';
 import { Spinner } from '../components/Spinner';
 import { useAuth } from '../features/auth/auth-context';
 import { usePageTitle } from '../hooks/usePageTitle';
+import { InviteModal } from '../features/groups/InviteModal';
 import { useGroup, useLeaveGroup } from '../features/groups/queries';
 import { SessionsList } from '../features/groups/SessionsList';
 import { SuggestedLocations } from '../features/groups/SuggestedLocations';
@@ -22,9 +23,16 @@ export function GroupPage() {
   const navigate = useNavigate();
   const group = useGroup(groupId);
   const leave = useLeaveGroup(groupId);
+  const location = useLocation();
   const [confirmLeave, setConfirmLeave] = useState(false);
   const [scheduling, setScheduling] = useState<Schemas['SuggestedSlot'] | null>(null);
+  // a group just created opens with its invite dialog
+  const [inviting, setInviting] = useState(() => Boolean((location.state as { invite?: boolean } | null)?.invite));
   usePageTitle(group.data?.name ?? 'Group');
+
+  useEffect(() => {
+    if (location.state) navigate(location.pathname, { replace: true }); // so a reload doesn't reopen the dialog
+  }, [location.state, location.pathname, navigate]);
 
   if (group.isPending) return <Spinner label="Loading group" />;
   if (group.isError) {
@@ -56,13 +64,18 @@ export function GroupPage() {
       <Link to="/groups" className="text-sm text-indigo-700 hover:underline">
         ← My groups
       </Link>
-      <header>
-        <p className="text-sm text-slate-500">
-          {g.subject.name} · {g.subject.code}
-        </p>
-        <h1 className="text-2xl font-bold tracking-tight">{g.name}</h1>
-        {g.description && <p className="mt-1 text-slate-600">{g.description}</p>}
+      <header className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-sm text-slate-500">
+            {g.subject.name} · {g.subject.code}
+            {!g.isOpen && <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700">Invite only</span>}
+          </p>
+          <h1 className="text-2xl font-bold tracking-tight">{g.name}</h1>
+          {g.description && <p className="mt-1 text-slate-600">{g.description}</p>}
+        </div>
+        {isMember && <Button onClick={() => setInviting(true)}>Invite people</Button>}
       </header>
+      {inviting && isMember && <InviteModal group={g} onClose={() => setInviting(false)} />}
 
       <section aria-labelledby="members-heading" className="rounded-xl border border-slate-200 bg-white p-4">
         <h2 id="members-heading" className="font-semibold">

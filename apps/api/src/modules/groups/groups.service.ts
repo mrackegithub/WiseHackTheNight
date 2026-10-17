@@ -1,5 +1,6 @@
+import { randomBytes } from 'node:crypto';
 import type { PrismaClient, RoleTag } from '@prisma/client';
-import { conflict, notFound } from '../../core/errors.js';
+import { conflict, forbidden, HttpError, notFound } from '../../core/errors.js';
 import { AvailabilityServiceImpl, DateTime, intersectMultipleSlots, subtractSlots, type AvailabilityDb } from '@sgm/integrations';
 import type { CreateGroupInput, SuggestedSlotsQuery } from './groups.schemas.js';
 
@@ -230,7 +231,7 @@ export async function joinGroup(
       throw conflict('Group is full', 'GROUP_FULL');
     }
     if (!group.isOpen) {
-      throw conflict('Group is closed', 'GROUP_CLOSED');
+      throw conflict('This group is invite-only', 'GROUP_CLOSED');
     }
 
     const userSubj = await tx.userSubject.findUnique({
@@ -258,15 +259,8 @@ export async function joinGroup(
       },
     });
 
+    // isOpen is the creator's choice (listed vs invite-only), not fullness: member count is checked on every join
     const newMemberCount = group.members.length + 1;
-    let isOpen: boolean = group.isOpen;
-    if (newMemberCount >= group.maxSize) {
-      await tx.group.update({
-        where: { id: groupId },
-        data: { isOpen: false },
-      });
-      isOpen = false;
-    }
 
     const allMembers = [...group.members, newMember];
     return {
@@ -282,7 +276,7 @@ export async function joinGroup(
       maxSize: group.maxSize,
       nextSessionAt: group.sessions[0]?.start ? group.sessions[0].start.toISOString() : null,
       description: group.description,
-      isOpen,
+      isOpen: group.isOpen,
       members: allMembers.map((m) => ({
         user: m.user,
         role: m.role,
@@ -335,15 +329,74 @@ export async function leaveGroup(
         data: { isOwner: true },
       });
     }
-
-    // Reopen group if it was closed due to being full
-    if (!group.isOpen && remainingMembers.length < group.maxSize) {
-      await tx.group.update({
-        where: { id: groupId },
-        data: { isOpen: true },
-      });
-    }
   });
+}
+
+const INVITE_DAYS = 7;
+
+/** A link any member can send to the people they choose; it also lets them into an invite-only group. */
+export async function createGroupInvite(prisma: PrismaClient, userId: string, groupId: string) {
+  const group = await prisma.group.findUnique({ where: { id: groupId }, include: { members: { select: { userId: true } } } });
+  if (!group) {
+    throw notFound('Group not found', 'NOT_FOUND');
+  }
+  if (!group.members.some((m) => m.userId === userId)) {
+    throw forbidden('Only members can invite people', 'FORBIDDEN');
+  }
+  const invite = await prisma.groupInvite.create({
+    data: {
+      token: randomBytes(18).toString('base64url'), // 24 chars, unguessable
+      groupId,
+      createdById: userId,
+      expiresAt: new Date(Date.now() + INVITE_DAYS * 24 * 60 * 60 * 1000),
+    },
+  });
+  return { token: invite.token, groupId, expiresAt: invite.expiresAt.toISOString() };
+}
+
+async function validInvite(prisma: PrismaClient, token: string) {
+  const invite = await prisma.groupInvite.findUnique({
+    where: { token },
+    include: {
+      createdBy: { select: { id: true, displayName: true, avatarUrl: true, faculty: true, bio: true } },
+      group: { include: { members: { select: { userId: true } } } },
+    },
+  });
+  if (!invite) {
+    throw notFound('Invite not found', 'NOT_FOUND');
+  }
+  if (invite.expiresAt.getTime() < Date.now()) {
+    throw new HttpError(410, 'INVITE_EXPIRED', 'This invite link has expired');
+  }
+  return invite;
+}
+
+export async function getInvite(prisma: PrismaClient, userId: string, token: string) {
+  const invite = await validInvite(prisma, token);
+  return {
+    token,
+    expiresAt: invite.expiresAt.toISOString(),
+    invitedBy: invite.createdBy,
+    group: await getGroup(prisma, invite.groupId),
+    alreadyMember: invite.group.members.some((m) => m.userId === userId),
+  };
+}
+
+/** Joins through an invite: works for invite-only groups too, as long as there's room. Idempotent. */
+export async function acceptInvite(prisma: PrismaClient, userId: string, token: string) {
+  const { group } = await validInvite(prisma, token);
+  if (!group.members.some((m) => m.userId === userId)) {
+    if (group.members.length >= group.maxSize) {
+      throw conflict('Group is full', 'GROUP_FULL');
+    }
+    const userSubj = await prisma.userSubject.findUnique({
+      where: { userId_subjectId: { userId, subjectId: group.subjectId } },
+    });
+    await prisma.groupMember.create({
+      data: { groupId: group.id, userId, role: userSubj?.role ?? 'PEER', isOwner: false },
+    });
+  }
+  return getGroup(prisma, group.id);
 }
 
 export async function getGroupSuggestedSlots(

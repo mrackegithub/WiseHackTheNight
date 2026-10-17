@@ -573,6 +573,76 @@ paths:
       responses:
         "204": { description: Left }
 
+  /groups/{groupId}/invites:
+    parameters:
+      - $ref: "#/components/parameters/GroupId"
+    post:
+      tags: [groups]
+      operationId: createGroupInvite
+      x-owner: backend
+      description: |
+        Creates a link a member sends to the people they choose. Anyone with the link can join while it is valid
+        (7 days) and the group has room, including an invite-only group (`isOpen: false`).
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GroupInvite" }
+        "403":
+          description: Only members can invite (code FORBIDDEN)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /invites/{token}:
+    parameters:
+      - $ref: "#/components/parameters/InviteToken"
+    get:
+      tags: [groups]
+      operationId: getInvite
+      x-owner: backend
+      description: The group an invite link leads to and who sent it, so the invited person can decide to join.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/InvitePreview" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "410":
+          description: The link has expired (code INVITE_EXPIRED)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /invites/{token}/accept:
+    parameters:
+      - $ref: "#/components/parameters/InviteToken"
+    post:
+      tags: [groups]
+      operationId: acceptInvite
+      x-owner: backend
+      description: Joins the group behind the link. Already a member returns the group unchanged.
+      responses:
+        "200":
+          description: Joined
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Group" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Group full (code GROUP_FULL)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "410":
+          description: The link has expired (code INVITE_EXPIRED)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
   /groups/{groupId}/suggested-slots:
     parameters:
       - $ref: "#/components/parameters/GroupId"
@@ -773,6 +843,7 @@ components:
       description: Max 31 days after `from`.
       schema: { type: string, format: date-time }
     GroupId: { name: groupId, in: path, required: true, schema: { type: string, format: uuid } }
+    InviteToken: { name: token, in: path, required: true, schema: { type: string, pattern: "^[A-Za-z0-9_-]{16,64}$" } }
 
   responses:
     Unauthorized:
@@ -795,7 +866,7 @@ components:
       properties:
         code:
           type: string
-          description: Stable, UPPER_SNAKE. e.g. VALIDATION_FAILED, UNAUTHORIZED, NOT_FOUND, GROUP_FULL, SLOT_TAKEN, NEPTUN_UNREACHABLE, GEOCODER_UNAVAILABLE
+          description: Stable, UPPER_SNAKE. e.g. VALIDATION_FAILED, UNAUTHORIZED, NOT_FOUND, GROUP_FULL, GROUP_CLOSED, INVITE_EXPIRED, SLOT_TAKEN, NEPTUN_UNREACHABLE, GEOCODER_UNAVAILABLE
           example: GROUP_FULL
         message: { type: string }
         details:
@@ -1086,7 +1157,7 @@ components:
           required: [members, isOpen]
           properties:
             description: { type: [string, "null"] }
-            isOpen: { type: boolean, description: "Appears in other users' candidate decks" }
+            isOpen: { type: boolean, description: "Appears in other users' candidate decks and anyone can join; false = invite-only (join with an invite link)" }
             members: { type: array, items: { $ref: "#/components/schemas/GroupMember" } }
     CreateGroupRequest:
       type: object
@@ -1096,7 +1167,23 @@ components:
         subjectId: { type: string, format: uuid }
         maxSize: { type: integer, minimum: 2, maximum: 10 }
         description: { type: string, maxLength: 300 }
-        isOpen: { type: boolean, default: true }
+        isOpen: { type: boolean, default: true, description: "false = invite-only: hidden from Discover, people join with an invite link" }
+    GroupInvite:
+      type: object
+      required: [token, groupId, expiresAt]
+      properties:
+        token: { type: string, description: "Secret part of the invite URL, which the web app builds as <origin>/invite/<token>" }
+        groupId: { type: string, format: uuid }
+        expiresAt: { type: string, format: date-time }
+    InvitePreview:
+      type: object
+      required: [token, expiresAt, invitedBy, group, alreadyMember]
+      properties:
+        token: { type: string }
+        expiresAt: { type: string, format: date-time }
+        invitedBy: { $ref: "#/components/schemas/PublicUser" }
+        group: { $ref: "#/components/schemas/Group" }
+        alreadyMember: { type: boolean }
     SuggestedSlot:
       allOf:
         - $ref: "#/components/schemas/TimeSlot"

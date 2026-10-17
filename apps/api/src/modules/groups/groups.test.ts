@@ -159,7 +159,7 @@ describe('B8: Groups Module', () => {
     const joinedGroup = joinRes.json();
     expect(joinedGroup.memberCount).toBe(2);
     expect(joinedGroup.members).toHaveLength(2);
-    expect(joinedGroup.isOpen).toBe(false); // Max size reached (2/2)
+    expect(joinedGroup.isOpen).toBe(true); // still listed: being full (2/2) is tracked by memberCount, not isOpen
 
     // User2 tries to join again -> 409 ALREADY_MEMBER
     const duplicateJoin = await app.inject({
@@ -178,7 +178,7 @@ describe('B8: Groups Module', () => {
     });
     expect(leaveRes.statusCode).toBe(204);
 
-    // Group should be re-opened now that it has 1/2 members
+    // Back to 1/2 members, still open
     const checkGroup = await app.inject({
       method: 'GET',
       url: `/api/v1/groups/${group.id}`,

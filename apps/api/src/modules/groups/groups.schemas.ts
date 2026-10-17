@@ -4,8 +4,12 @@ export const groupIdParamsSchema = z.object({
   groupId: z.string().uuid(),
 });
 
+export const inviteTokenParamsSchema = z.object({
+  token: z.string().regex(/^[A-Za-z0-9_-]{16,64}$/, { message: 'not an invite token' }),
+});
+
 export const createGroupSchema = z.object({
-  name: z.string().min(3).max(60),
+  name: z.string().trim().min(3).max(60),
   subjectId: z.string().uuid(),
   maxSize: z.coerce.number().int().min(2).max(10),
   description: z.string().max(300).optional(),

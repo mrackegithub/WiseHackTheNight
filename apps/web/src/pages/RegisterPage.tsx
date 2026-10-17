@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { useMutation } from '@tanstack/react-query';
-import { Link } from 'react-router';
+import { Link, useLocation } from 'react-router';
 import type { Schemas } from '@sgm/contracts';
 import { api } from '../api/client';
 import { ApiError, unwrap } from '../api/errors';
@@ -17,6 +17,7 @@ import { usePageTitle } from '../hooks/usePageTitle';
 export function RegisterPage() {
   usePageTitle('Create account');
   const { login } = useAuth();
+  const location = useLocation();
   const [values, setValues] = useState<RegisterValues>({ displayName: '', email: '', password: '' });
   const [errors, setErrors] = useState<Partial<Record<keyof RegisterValues, string>>>({});
 
@@ -52,7 +53,7 @@ export function RegisterPage() {
       footer={
         <>
           Already have an account?{' '}
-          <Link to="/login" className="font-medium text-indigo-700 hover:underline">
+          <Link to="/login" state={location.state} className="font-medium text-indigo-700 hover:underline">
             Log in
           </Link>
         </>
