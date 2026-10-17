@@ -7,11 +7,11 @@ export function HomePage() {
   usePageTitle('Home');
   const { me } = useAuth();
   return (
-    <section className="relative isolate overflow-hidden rounded-2xl">
-      {/* decorative: faded behind the text, blending into the page at the bottom */}
-      <img src={studentsPhoto} alt="" aria-hidden className="absolute inset-0 -z-10 h-full w-full object-cover opacity-35" />
-      <div aria-hidden className="absolute inset-0 -z-10 bg-gradient-to-b from-slate-50/30 via-slate-50/55 to-slate-50" />
-      <div className="flex flex-col items-center gap-3 px-4 py-20 text-center sm:py-28">
+    <section className="relative isolate flex min-h-[38rem] items-end justify-center overflow-hidden rounded-2xl p-4 sm:aspect-[3/2] sm:min-h-0 sm:p-8">
+      {/* decorative: the whole photo (3:2) behind the welcome, softened only towards the bottom where the text sits */}
+      <img src={studentsPhoto} alt="" aria-hidden className="absolute inset-0 -z-10 h-full w-full object-cover opacity-90" />
+      <div aria-hidden className="absolute inset-0 -z-10 bg-gradient-to-b from-transparent from-50% to-slate-50/80" />
+      <div className="flex max-w-lg flex-col items-center gap-3 rounded-2xl bg-white/80 px-6 py-6 text-center shadow-lg backdrop-blur-sm sm:px-10">
         <h1 className="text-3xl font-bold tracking-tight">Welcome{me ? `, ${me.displayName}` : ''}!</h1>
         <p className="max-w-md font-medium text-slate-700">
           Swipe on classmates who share your subjects and free time, then book a room together.
