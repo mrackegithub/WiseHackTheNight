@@ -229,8 +229,33 @@ export interface paths {
         /** @description Busy events (classes from Neptun + manual blocks). */
         get: operations["getMySchedule"];
         put?: never;
-        post?: never;
+        /**
+         * @description Adds a busy block that isn't in Neptun (source MANUAL), e.g. a job, sport or a course without a Neptun feed.
+         *     With `repeatWeeks` > 0 it is also added at the same local time (Europe/Budapest) on the same weekday for that
+         *     many following weeks; every copy is a separate event that can be deleted on its own.
+         *     Busy blocks are subtracted from free time like classes.
+         */
+        post: operations["createManualEvents"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/schedule/{eventId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                eventId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** @description Deletes one of the user's own MANUAL events. Neptun classes and study sessions can't be deleted here. */
+        delete: operations["deleteManualEvent"];
         options?: never;
         head?: never;
         patch?: never;
@@ -664,6 +689,30 @@ export interface components {
             subjectCode?: string | null;
             /** @enum {string} */
             source: "NEPTUN" | "MANUAL" | "STUDY_SESSION";
+            /** @description Set on MANUAL events (what the busy time is); absent for Neptun classes and study sessions. */
+            category?: components["schemas"]["EventCategory"];
+        };
+        /**
+         * @description What a manual busy time is: CLASS (a class not in Neptun), STUDY (own study time), WORK, OTHER.
+         * @enum {string}
+         */
+        EventCategory: "CLASS" | "STUDY" | "WORK" | "OTHER";
+        ManualEventInput: {
+            /** @example Part-time job */
+            title: string;
+            /** Format: date-time */
+            start: string;
+            /**
+             * Format: date-time
+             * @description After start, at most 24 h later
+             */
+            end: string;
+            /**
+             * @description Extra weekly copies
+             * @default 0
+             */
+            repeatWeeks: number;
+            category?: components["schemas"]["EventCategory"];
         };
         NeptunConnection: {
             connected: boolean;
@@ -1363,6 +1412,52 @@ export interface operations {
                     "application/json": components["schemas"]["CalendarEvent"][];
                 };
             };
+        };
+    };
+    createManualEvents: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ManualEventInput"];
+            };
+        };
+        responses: {
+            /** @description Created (the first event plus its weekly copies) */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CalendarEvent"][];
+                };
+            };
+            422: components["responses"]["ValidationError"];
+        };
+    };
+    deleteManualEvent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                eventId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["NotFound"];
         };
     };
     getMyAvailability: {

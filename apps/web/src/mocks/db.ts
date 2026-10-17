@@ -30,6 +30,8 @@ export interface MockUser {
     /** Recurring classes imported from Neptun; expanded per requested range. */
     timetable: TimetableEntry[];
     windows: Schemas['WeeklyWindow'][];
+    /** Busy blocks the user added by hand (source MANUAL). */
+    manualEvents: Schemas['CalendarEvent'][];
   };
   swipes: MockSwipe[];
   matches: Schemas['Match'][];
@@ -50,7 +52,7 @@ export const defaultPreferences = (): Schemas['Preferences'] => ({
 });
 
 /** Bump when the shape below changes, so stale browser-saved mock data is discarded instead of crashing. */
-const DB_VERSION = 8;
+const DB_VERSION = 9;
 
 const userSubject = (subjectId: string, role: Schemas['RoleTag'], confidence = 3): Schemas['UserSubject'] => ({
   subject: subjectById(subjectId)!,
@@ -69,6 +71,7 @@ export function newMockUser(me: Schemas['Me'], password: string): MockUser {
       icsUrl: null,
       timetable: [],
       windows: defaultWindows(),
+      manualEvents: [],
     },
     swipes: [],
     matches: [],
@@ -133,6 +136,7 @@ function seed() {
     icsUrl: 'webcal://neptun.example.edu/calendar/demo.ics',
     timetable: sampleTimetable,
     windows: defaultWindows(),
+    manualEvents: [],
   };
 
   return {

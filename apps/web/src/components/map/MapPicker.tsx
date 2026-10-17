@@ -37,7 +37,7 @@ export default function MapPicker({ value, onChange }: MapPickerProps) {
       center={value ?? BUDAPEST}
       zoom={value ? 15 : 12}
       scrollWheelZoom={false}
-      className="h-64 w-full rounded-lg border border-slate-200"
+      className="relative isolate z-0 h-64 w-full rounded-lg border border-slate-200"
       aria-label="Map: click to set your home base"
     >
       <TileLayer url={config.mapTileUrl} attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' />

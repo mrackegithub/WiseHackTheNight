@@ -17,7 +17,7 @@ export function suggestedSlots(group: MockGroup, from: DateTime, to: DateTime, m
   const base = realUser
     ? freeSlots(
         realUser.calendar.windows,
-        [...expandTimetable(realUser.calendar.timetable, from, to), ...sessionEvents(realUser.me.id, from, to)],
+        [...expandTimetable(realUser.calendar.timetable, from, to), ...realUser.calendar.manualEvents, ...sessionEvents(realUser.me.id, from, to)],
         from,
         to,
         minMinutes,

@@ -1,12 +1,14 @@
 import type { PrismaClient } from '@prisma/client';
 import {
   AvailabilityServiceImpl,
+  DateTime,
   type AvailabilityDb,
   type AvailabilityService,
   type TimeSlot,
 } from '@sgm/integrations';
 import type { paths } from '@sgm/contracts';
-import type { WeeklyWindowInput } from './neptun.schemas.js';
+import { notFound } from '../../../core/errors.js';
+import type { ManualEventInput, WeeklyWindowInput } from './neptun.schemas.js';
 
 export type CalendarEventResponse =
   paths['/me/schedule']['get']['responses'][200]['content']['application/json'][number];
@@ -34,15 +36,57 @@ export async function getMySchedule(
     orderBy: { start: 'asc' },
   });
 
-  return events.map((e) => ({
-    id: e.id,
-    title: e.title,
-    start: e.start.toISOString(),
-    end: e.end.toISOString(),
-    room: e.room ?? null,
-    subjectCode: e.subjectCode ?? null,
-    source: e.source,
-  }));
+  return events.map((e) => toEventResponse(e));
+}
+
+const toEventResponse = (e: {
+  id: string;
+  title: string;
+  start: Date;
+  end: Date;
+  room: string | null;
+  subjectCode: string | null;
+  source: CalendarEventResponse['source'];
+  category?: CalendarEventResponse['category'] | null;
+}): CalendarEventResponse => ({
+  id: e.id,
+  title: e.title,
+  start: e.start.toISOString(),
+  end: e.end.toISOString(),
+  room: e.room ?? null,
+  subjectCode: e.subjectCode ?? null,
+  source: e.source,
+  ...(e.category ? { category: e.category } : {}),
+});
+
+/** Busy blocks the user adds by hand; weekly copies keep the same Budapest local time across DST. */
+export async function createManualEvents(
+  prisma: PrismaClient,
+  userId: string,
+  input: ManualEventInput,
+): Promise<CalendarEventResponse[]> {
+  const start = DateTime.fromISO(input.start).setZone('Europe/Budapest');
+  const end = DateTime.fromISO(input.end).setZone('Europe/Budapest');
+  const created = await prisma.$transaction(
+    Array.from({ length: input.repeatWeeks + 1 }, (_, week) =>
+      prisma.calendarEvent.create({
+        data: {
+          userId,
+          title: input.title,
+          start: start.plus({ weeks: week }).toJSDate(),
+          end: end.plus({ weeks: week }).toJSDate(),
+          source: 'MANUAL',
+          category: input.category,
+        },
+      }),
+    ),
+  );
+  return created.map(toEventResponse);
+}
+
+export async function deleteManualEvent(prisma: PrismaClient, userId: string, eventId: string): Promise<void> {
+  const { count } = await prisma.calendarEvent.deleteMany({ where: { id: eventId, userId, source: 'MANUAL' } });
+  if (count === 0) throw notFound('Busy time not found');
 }
 
 export async function getMyAvailability(

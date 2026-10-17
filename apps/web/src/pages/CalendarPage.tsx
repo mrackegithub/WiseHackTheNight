@@ -1,14 +1,20 @@
+import { useState } from 'react';
 import { DateTime } from 'luxon';
 import { useSearchParams } from 'react-router';
+import type { Schemas } from '@sgm/contracts';
 import { Button } from '../components/form/Button';
 import { QueryError } from '../components/QueryError';
 import { Spinner } from '../components/Spinner';
+import { BusyTimeModal } from '../features/calendar/BusyTimeModal';
+import { EventDetailsModal } from '../features/calendar/EventDetailsModal';
+import { categoryOptions } from '../features/calendar/event-style';
+import { ManualEventsList } from '../features/calendar/ManualEventsList';
 import { NeptunPanel } from '../features/calendar/NeptunPanel';
 import { useWeekAvailability, useWeekSchedule } from '../features/calendar/queries';
 import { WeekView } from '../features/calendar/WeekView';
 import { WindowsEditor } from '../features/calendar/WindowsEditor';
 import { formatMinutes } from '../lib/labels';
-import { formatWeekRange, minutesBetween, startOfWeek, ZONE } from '../lib/time';
+import { formatWeekRange, minutesBetween, nowInZone, startOfWeek, ZONE } from '../lib/time';
 import { usePageTitle } from '../hooks/usePageTitle';
 
 export function CalendarPage() {
@@ -16,12 +22,19 @@ export function CalendarPage() {
   const [params, setParams] = useSearchParams();
   const requested = params.get('week') ? DateTime.fromISO(params.get('week')!, { zone: ZONE }) : null;
   const weekStart = startOfWeek(requested?.isValid ? requested : undefined);
+  const [addingBusy, setAddingBusy] = useState(false);
+  const [selectedEvent, setSelectedEvent] = useState<Schemas['CalendarEvent'] | null>(null);
 
   const schedule = useWeekSchedule(weekStart);
   const availability = useWeekAvailability(weekStart);
 
   const goTo = (week: DateTime) => setParams({ week: week.toISODate()! });
   const freeMinutes = (availability.data ?? []).reduce((sum, s) => sum + minutesBetween(s.start, s.end), 0);
+  const manualEvents = (schedule.data ?? []).filter((e) => e.source === 'MANUAL');
+  // new busy time defaults to today when viewing this week, else the Monday of the viewed week
+  const today = nowInZone().startOf('day');
+  const defaultDate = today >= weekStart && today < weekStart.plus({ weeks: 1 }) ? today : weekStart;
+  const hasClasses = (schedule.data ?? []).some((e) => e.source === 'NEPTUN');
 
   return (
     <section className="flex flex-col gap-4">
@@ -33,7 +46,7 @@ export function CalendarPage() {
             {availability.data && <> · {formatMinutes(freeMinutes)} free for studying</>}
           </p>
         </div>
-        <nav className="flex gap-2" aria-label="Week">
+        <nav className="flex flex-wrap gap-2" aria-label="Week">
           <Button variant="secondary" onClick={() => goTo(weekStart.minus({ weeks: 1 }))} aria-label="Previous week">
             ←
           </Button>
@@ -43,18 +56,18 @@ export function CalendarPage() {
           <Button variant="secondary" onClick={() => goTo(weekStart.plus({ weeks: 1 }))} aria-label="Next week">
             →
           </Button>
+          <Button onClick={() => setAddingBusy(true)}>+ Busy time</Button>
         </nav>
       </header>
 
       <NeptunPanel />
 
-      <div className="flex gap-4 text-xs text-slate-600" aria-hidden>
-        <span className="flex items-center gap-1">
-          <span className="h-3 w-3 rounded bg-indigo-600" /> Class
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="h-3 w-3 rounded bg-amber-500" /> Study session
-        </span>
+      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-600" aria-hidden>
+        {categoryOptions.map((o) => (
+          <span key={o.value} className="flex items-center gap-1">
+            <span className={`h-3 w-3 rounded ${o.swatch}`} /> {o.label}
+          </span>
+        ))}
         <span className="flex items-center gap-1">
           <span className="h-3 w-3 rounded bg-emerald-100" /> Free to study
         </span>
@@ -73,14 +86,24 @@ export function CalendarPage() {
         <Spinner label="Loading your week" />
       ) : (
         <>
-          <WeekView weekStart={weekStart} events={schedule.data ?? []} freeSlots={availability.data ?? []} />
-          {schedule.data?.length === 0 && (
-            <p className="text-sm text-slate-600">No classes this week. Connect your Neptun calendar above so we can find times that really work.</p>
+          <WeekView weekStart={weekStart} events={schedule.data ?? []} freeSlots={availability.data ?? []} onSelectEvent={setSelectedEvent} />
+          {!hasClasses && (
+            <p className="text-sm text-slate-600">
+              No classes this week. Connect your Neptun calendar above, or add your classes and other commitments with{' '}
+              <button type="button" className="font-medium text-indigo-700 hover:underline" onClick={() => setAddingBusy(true)}>
+                + Busy time
+              </button>
+              .
+            </p>
           )}
+          <ManualEventsList events={manualEvents} onAdd={() => setAddingBusy(true)} />
         </>
       )}
 
       <WindowsEditor />
+
+      {addingBusy && <BusyTimeModal defaultDate={defaultDate} onClose={() => setAddingBusy(false)} />}
+      {selectedEvent && <EventDetailsModal event={selectedEvent} onClose={() => setSelectedEvent(null)} />}
     </section>
   );
 }
