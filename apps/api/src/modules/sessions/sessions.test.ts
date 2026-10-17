@@ -86,7 +86,7 @@ describe('B9: Sessions Module', () => {
     expect(res.statusCode).toBe(403);
   });
 
-  it('rejects session creation with start >= end with 400', async () => {
+  it('rejects session creation with start >= end with 422', async () => {
     const start = new Date(Date.now() + 86400000).toISOString();
     const end = start;
 
@@ -96,7 +96,7 @@ describe('B9: Sessions Module', () => {
       headers: { authorization: `Bearer ${demoToken}` },
       payload: { start, end },
     });
-    expect(res.statusCode).toBe(400);
+    expect(res.statusCode).toBe(422);
   });
 
   it('creates and lists group sessions', async () => {

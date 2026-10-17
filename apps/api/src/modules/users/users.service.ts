@@ -42,6 +42,21 @@ export async function getMe(prisma: PrismaClient, userId: string) {
   };
 }
 
+/**
+ * Me.onboardingComplete (docs/handoffs/fe-to-be-onboarding-complete.md): true once the user has ≥1 subject,
+ * a preferences row, and a home location unless they study ONLINE only. Never flips back to false.
+ * Called after every write that can complete onboarding.
+ */
+async function refreshOnboarding(prisma: PrismaClient, userId: string) {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { onboardingComplete: true, homeLat: true, preferences: { select: { mode: true } }, _count: { select: { subjects: true } } },
+  });
+  if (!user || user.onboardingComplete) return;
+  const complete = user._count.subjects > 0 && !!user.preferences && (user.homeLat !== null || user.preferences.mode === 'ONLINE');
+  if (complete) await prisma.user.update({ where: { id: userId }, data: { onboardingComplete: true } });
+}
+
 export async function updateMe(prisma: PrismaClient, userId: string, input: UpdateMeInput) {
   if (input.interestIds && input.interestIds.length > 0) {
     const existingInterests = await prisma.interest.findMany({
@@ -85,6 +100,7 @@ export async function updateMe(prisma: PrismaClient, userId: string, input: Upda
     }
   });
 
+  await refreshOnboarding(prisma, userId);
   return getMe(prisma, userId);
 }
 
@@ -145,6 +161,7 @@ export async function replaceMySubjects(
     }
   });
 
+  await refreshOnboarding(prisma, userId);
   return getMySubjects(prisma, userId);
 }
 
@@ -203,6 +220,7 @@ export async function updateMyPreferences(
     },
   });
 
+  await refreshOnboarding(prisma, userId);
   return {
     groupSizeMin: prefs.groupSizeMin,
     groupSizeMax: prefs.groupSizeMax,
@@ -231,6 +249,7 @@ export async function updateMyLocation(
       homeLabel: label,
     },
   });
+  await refreshOnboarding(prisma, userId);
 
   return {
     lat,

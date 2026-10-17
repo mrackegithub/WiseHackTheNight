@@ -177,7 +177,7 @@ describe('B6: Matching Candidates Deck', () => {
       });
     });
 
-    it('rejects self-swipe with 400', async () => {
+    it('rejects self-swipe with 422', async () => {
       const res = await app.inject({
         method: 'POST',
         url: '/api/v1/matching/swipes',
@@ -189,8 +189,8 @@ describe('B6: Matching Candidates Deck', () => {
           direction: 'LIKE',
         },
       });
-      expect(res.statusCode).toBe(400);
-      expect(res.json().code).toBe('SELF_SWIPE');
+      expect(res.statusCode).toBe(422);
+      expect(res.json().code).toBe('VALIDATION_FAILED');
     });
 
     it('records PASS swipe with no match', async () => {

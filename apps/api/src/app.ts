@@ -6,7 +6,24 @@ import autoload from '@fastify/autoload';
 const srcDir = fileURLToPath(new URL('.', import.meta.url));
 
 export async function buildApp(opts: FastifyServerOptions = {}) {
-  const app = Fastify(opts);
+  // 3 MB: .ics uploads may be up to 2 MB (contract) plus multipart overhead; Fastify's default is 1 MB.
+  const app = Fastify({ bodyLimit: 3 * 1024 * 1024, ...opts });
+
+  // Clients often send `Content-Type: application/json` on POST/DELETE without a body (e.g. sync, leave
+  // group, cancel booking). Fastify rejects that with 400 FST_ERR_CTP_EMPTY_JSON_BODY; treat it as no body.
+  app.removeContentTypeParser('application/json');
+  app.addContentTypeParser('application/json', { parseAs: 'string' }, (_req, body, done) => {
+    const text = typeof body === 'string' ? body : body.toString('utf8');
+    if (text.trim() === '') return done(null, undefined);
+    try {
+      done(null, JSON.parse(text));
+    } catch {
+      const err = new Error('Body is not valid JSON') as Error & { statusCode: number; code: string };
+      err.statusCode = 400;
+      err.code = 'FST_ERR_CTP_INVALID_JSON_BODY';
+      done(err, undefined);
+    }
+  });
 
   // Shared plugins (wrapped with fastify-plugin so their decorators are visible everywhere).
   await app.register(autoload, {

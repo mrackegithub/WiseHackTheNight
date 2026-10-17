@@ -1,6 +1,15 @@
 import type { PrismaClient, RoleTag } from '@prisma/client';
-import { badRequest, conflict, notFound } from '../../core/errors.js';
-import { stubIntersectSlots } from '../../core/stubs/integrations.stub.js';
+import { AvailabilityServiceImpl, intersectMultipleSlots, intersectSlots, type AvailabilityDb, type TimeSlot } from '@sgm/integrations';
+import { conflict, notFound, validationError } from '../../core/errors.js';
+
+const MATCH_HORIZON_DAYS = 14;
+
+/** Real free slots (weekly windows − classes − study sessions, Europe/Budapest) for the next 14 days. ≤ 2 queries. */
+async function freeSlotsFor(prisma: PrismaClient, userIds: string[]): Promise<Map<string, TimeSlot[]>> {
+  const start = new Date();
+  const end = new Date(start.getTime() + MATCH_HORIZON_DAYS * 24 * 60 * 60 * 1000);
+  return new AvailabilityServiceImpl(prisma as unknown as AvailabilityDb).getFreeSlotsBulk([...new Set(userIds)], { start, end }, 30);
+}
 import type {
   GetCandidatesQuery,
   ListMatchesQuery,
@@ -24,22 +33,6 @@ function haversineDistance(
   return Math.round(R * c * 10) / 10;
 }
 
-function generateDefaultSlots(rangeStart: Date, daysAhead = 14) {
-  const slots: Array<{ start: Date; end: Date }> = [];
-  for (let i = 0; i < daysAhead; i++) {
-    const day = new Date(rangeStart.getTime() + i * 24 * 60 * 60 * 1000);
-    const dayOfWeek = day.getDay(); // 0 is Sunday, 6 is Saturday
-    if (dayOfWeek !== 0 && dayOfWeek !== 6) {
-      // Mon - Fri afternoon study window: 14:00 - 18:00
-      const start = new Date(day);
-      start.setHours(14, 0, 0, 0);
-      const end = new Date(day);
-      end.setHours(18, 0, 0, 0);
-      slots.push({ start, end });
-    }
-  }
-  return slots;
-}
 
 export async function getCandidates(
   prisma: PrismaClient,
@@ -119,8 +112,8 @@ export async function getCandidates(
       take: 200,
     });
 
-    const now = new Date();
-    const myFreeSlots = generateDefaultSlots(now, 14);
+    const freeSlots = await freeSlotsFor(prisma, [currentUserId, ...candidateEnrollments.map((e) => e.user.id)]);
+    const myFreeSlots = freeSlots.get(currentUserId) ?? [];
 
     const candidates = [];
 
@@ -153,8 +146,8 @@ export async function getCandidates(
       }
 
       // Shared free slots
-      const candFreeSlots = generateDefaultSlots(now, 14);
-      const sharedTimeSlots = stubIntersectSlots(myFreeSlots, candFreeSlots, 30);
+      const candFreeSlots = freeSlots.get(candidateUser.id) ?? [];
+      const sharedTimeSlots = intersectSlots(myFreeSlots, candFreeSlots, 30);
       const overlappingMinutes = sharedTimeSlots.reduce((acc, slot) => {
         return acc + (slot.end.getTime() - slot.start.getTime()) / (60 * 1000);
       }, 0);
@@ -244,8 +237,8 @@ export async function getCandidates(
     take: 50,
   });
 
-  const now = new Date();
-  const myFreeSlots = generateDefaultSlots(now, 14);
+  const freeSlots = await freeSlotsFor(prisma, [currentUserId, ...candidateGroups.flatMap((g) => g.members.map((m) => m.userId))]);
+  const myFreeSlots = freeSlots.get(currentUserId) ?? [];
   const groupCandidates = [];
 
   for (const group of candidateGroups) {
@@ -286,8 +279,9 @@ export async function getCandidates(
     );
 
     // Slots
-    const groupSlots = generateDefaultSlots(now, 14);
-    const sharedTimeSlots = stubIntersectSlots(myFreeSlots, groupSlots, 30);
+    // when all current members are free
+    const groupSlots = intersectMultipleSlots(group.members.map((m) => freeSlots.get(m.userId) ?? []), 30);
+    const sharedTimeSlots = intersectSlots(myFreeSlots, groupSlots, 30);
     const overlappingMinutes = sharedTimeSlots.reduce((acc, slot) => {
       return acc + (slot.end.getTime() - slot.start.getTime()) / (60 * 1000);
     }, 0);
@@ -349,7 +343,7 @@ export async function swipe(
   const { targetKind, targetId, subjectId, direction } = data;
 
   if (targetKind === 'user' && targetId === currentUserId) {
-    throw badRequest('Cannot swipe on yourself', 'SELF_SWIPE');
+    throw validationError('Cannot swipe on yourself', [{ path: 'targetId', issue: 'cannot be your own id' }]);
   }
 
   // Ensure subject exists
@@ -564,7 +558,7 @@ export async function swipe(
       throw notFound('Group not found', 'NOT_FOUND');
     }
     if (group.subjectId !== subjectId) {
-      throw badRequest('Group is for a different subject', 'SUBJECT_MISMATCH');
+      throw validationError('Group is for a different subject', [{ path: 'subjectId', issue: 'must match the group subject' }]);
     }
 
     const isMember = group.members.some((m) => m.userId === currentUserId);

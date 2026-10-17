@@ -1,5 +1,5 @@
 import type { PrismaClient } from '@prisma/client';
-import { badRequest, conflict, forbidden, notFound } from '../../core/errors.js';
+import { conflict, forbidden, notFound, validationError } from '../../core/errors.js';
 import type { CreateSessionInput } from './sessions.schemas.js';
 
 export async function listGroupSessions(prisma: PrismaClient, groupId: string) {
@@ -67,7 +67,7 @@ export async function createGroupSession(
   const start = new Date(data.start);
   const end = new Date(data.end);
   if (start.getTime() >= end.getTime()) {
-    throw badRequest('Start time must be before end time', 'INVALID_TIME_RANGE');
+    throw validationError('Start time must be before end time', [{ path: 'end', issue: 'must be after start' }]);
   }
 
   if (data.bookingId) {
@@ -78,7 +78,7 @@ export async function createGroupSession(
       throw notFound('Booking not found', 'NOT_FOUND');
     }
     if (booking.groupId !== groupId) {
-      throw badRequest('Booking does not belong to this group', 'INVALID_BOOKING');
+      throw validationError('Booking does not belong to this group', [{ path: 'bookingId', issue: 'must be a booking of this group' }]);
     }
   }
 

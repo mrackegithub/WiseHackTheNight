@@ -116,7 +116,8 @@ export async function validateSafeUrl(rawUrl: string): Promise<URL> {
   const normalized = normalizeCalendarUrl(rawUrl);
   const parsed = new URL(normalized);
 
-  const hostname = parsed.hostname;
+  // URL keeps IPv6 literals bracketed ("[::1]"); strip them so isIP() recognises and blocks private ones.
+  const hostname = parsed.hostname.replace(/^\[(.*)\]$/, '$1');
 
   // Block localhost and standard loopback hostnames
   if (
