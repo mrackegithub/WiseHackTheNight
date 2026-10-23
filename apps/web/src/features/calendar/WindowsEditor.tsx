@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/client';
 import { unwrap } from '../../api/errors';
@@ -6,7 +6,15 @@ import { Button } from '../../components/form/Button';
 import { toast } from '../../lib/toast';
 import { useAuth } from '../auth/auth-context';
 import { calendarKeys } from './queries';
-import { defaultWindows, readCachedWindows, validateWindows, WEEKDAYS, writeCachedWindows, type WeeklyWindow } from './windows';
+import {
+  DEFAULT_WINDOWS,
+  fetchAvailabilityWindows,
+  readCachedWindows,
+  validateWindows,
+  WEEKDAYS,
+  writeCachedWindows,
+  type WeeklyWindow,
+} from './windows';
 
 type Row = WeeklyWindow & { key: number };
 
@@ -18,9 +26,30 @@ const withoutKeys = (rows: Row[]): WeeklyWindow[] => rows.map(({ weekday, startT
 export function WindowsEditor() {
   const { me } = useAuth();
   const queryClient = useQueryClient();
-  const [saved, setSaved] = useState<WeeklyWindow[]>(() => (me && readCachedWindows(me.id)) || defaultWindows());
+
+  const [saved, setSaved] = useState<WeeklyWindow[]>(() => (me && readCachedWindows(me.id)) || DEFAULT_WINDOWS);
   const [rows, setRows] = useState<Row[]>(() => withKeys(saved));
   const [submitted, setSubmitted] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchAvailabilityWindows(me?.id).then((serverWindows) => {
+      if (cancelled) return;
+      setSaved((currentSaved) => {
+        if (JSON.stringify(serverWindows) === JSON.stringify(currentSaved)) {
+          return currentSaved;
+        }
+        setRows((currentRows) => {
+          const isDirty = JSON.stringify(withoutKeys(currentRows)) !== JSON.stringify(currentSaved);
+          return isDirty ? currentRows : withKeys(serverWindows);
+        });
+        return serverWindows;
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [me?.id]);
 
   const errors = validateWindows(rows);
   const dirty = JSON.stringify(withoutKeys(rows)) !== JSON.stringify(saved);

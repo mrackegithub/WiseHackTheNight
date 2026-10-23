@@ -5,9 +5,8 @@ export interface TimetableCourse {
 }
 
 // Neptun class titles look like "Digitális technika (BMEVIMIAA00 - EA) - Dr. Pálfi Vilmos - Tanóra", and often
-// "Digitális technika ( - EA) - …". Deadlines ("ZH1 (Feladat) - Feladat - Határidő: 10:00:00") have no
-// "CODE - GROUP" pair in the brackets, so they never count as a course.
-const NEPTUN_CLASS_TITLE = /^(.+?)\s*\(\s*([^()\s]*)\s+-\s+[^()]*\)/;
+// "Digitális technika ( - EA) - …".
+const NEPTUN_CLASS_TITLE = /^(.+?)\s*\(\s*([^()\s]*?)(?:\s+-\s+[^()]*)?\)/;
 
 /** The course a Neptun class title belongs to, or null for deadlines and other non-class entries. */
 export function courseFromTitle(title: string): TimetableCourse | null {

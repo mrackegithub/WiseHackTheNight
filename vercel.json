@@ -1,0 +1,10 @@
+{
+  "name": "wisehackthenight",
+  "installCommand": "pnpm -r install",
+  "buildCommand": "pnpm run vercel-build",
+  "outputDirectory": "apps/web/dist",
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api/index" },
+    { "source": "/((?!api/).*)", "destination": "/index.html" }
+  ]
+}

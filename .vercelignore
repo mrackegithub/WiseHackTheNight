@@ -1,0 +1,11 @@
+node_modules
+**/node_modules
+.env
+**/.env
+.env.local
+**/.env.local
+.env.cloud
+**/.env.cloud
+**/dist
+coverage
+*.log

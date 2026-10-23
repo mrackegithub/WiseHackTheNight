@@ -185,6 +185,9 @@ model Match {
   userBId   String?  @db.Uuid // null when a user joined a group
   createdAt DateTime @default(now())
   group     Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@index([userAId])
+  @@index([userBId])
 }
 
 model StudySession {

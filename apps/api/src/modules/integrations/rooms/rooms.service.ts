@@ -1,8 +1,19 @@
 import type { PrismaClient } from '@prisma/client';
-import { MockBookingProvider, type BookingDb } from '@sgm/integrations';
+import {
+  LibCalProvider,
+  MockBookingProvider,
+  MsGraphProvider,
+  type BookingDb,
+} from '@sgm/integrations';
 import type { paths } from '@sgm/contracts';
 import { conflict, forbidden, notFound } from '../../../core/errors.js';
 import type { CreateBookingInput, SearchRoomsQuery } from './rooms.schemas.js';
+
+function getBookingProvider(provider: string, db?: BookingDb) {
+  if (provider === 'LIBCAL') return new LibCalProvider();
+  if (provider === 'MS_GRAPH') return new MsGraphProvider();
+  return new MockBookingProvider(db);
+}
 
 export type RoomDto =
   paths['/rooms']['get']['responses'][200]['content']['application/json'][number];
@@ -105,8 +116,8 @@ export async function createBooking(
       throw conflict('Room is already booked for this time interval', 'SLOT_TAKEN');
     }
 
-    // Call MockBookingProvider to generate external reference
-    const provider = new MockBookingProvider(prisma as unknown as BookingDb);
+    // Call booking provider to generate external reference
+    const provider = getBookingProvider(room.provider, prisma as unknown as BookingDb);
     const bookResult = await provider.book({
       roomId: data.roomId,
       slot: { start, end },
@@ -183,14 +194,34 @@ export async function getBooking(
 export async function cancelBooking(
   prisma: PrismaClient,
   bookingId: string,
+  userId?: string,
 ): Promise<void> {
   const booking = await prisma.booking.findUnique({
     where: { id: bookingId },
+    include: {
+      room: true,
+      group: {
+        include: {
+          members: { select: { userId: true } },
+        },
+      },
+    },
   });
 
-  if (!booking) return;
+  if (!booking) {
+    throw notFound('Booking not found', 'NOT_FOUND');
+  }
 
-  const provider = new MockBookingProvider();
+  if (userId) {
+    const isAuthorized =
+      booking.bookedById === userId ||
+      booking.group.members.some((m) => m.userId === userId);
+    if (!isAuthorized) {
+      throw forbidden('Not authorized to cancel this booking', 'FORBIDDEN');
+    }
+  }
+
+  const provider = getBookingProvider(booking.room.provider, prisma as unknown as BookingDb);
   if (booking.externalRef) {
     await provider.cancel(booking.externalRef);
   }

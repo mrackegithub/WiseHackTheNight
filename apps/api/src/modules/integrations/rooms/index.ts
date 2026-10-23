@@ -58,8 +58,8 @@ const roomsRoutes: FastifyPluginAsync = async (app) => {
     { preHandler: [app.authenticate] },
     async (req, reply): Promise<void> => {
       const { bookingId } = validate(bookingParamsSchema, req.params);
-      await roomsService.cancelBooking(app.prisma, bookingId);
-      reply.status(204);
+      await roomsService.cancelBooking(app.prisma, bookingId, req.user.sub);
+      return reply.status(204).send();
     },
   );
 };

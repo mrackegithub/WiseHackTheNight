@@ -78,6 +78,7 @@ export async function seedCore(prisma: PrismaClient): Promise<CoreSeedResult> {
   await prisma.swipe.deleteMany();
   await prisma.match.deleteMany();
   await prisma.groupMember.deleteMany();
+  await prisma.calendarEvent.deleteMany({ where: { source: 'STUDY_SESSION' } });
   await prisma.studySession.deleteMany();
   await prisma.group.deleteMany();
   // test accounts only: real users keep their profile, interests and logins across re-seeds
@@ -98,7 +99,12 @@ export async function seedCore(prisma: PrismaClient): Promise<CoreSeedResult> {
     });
     createdSubjects.push(subj);
   }
-  await prisma.subject.deleteMany({ where: { code: { notIn: SUBJECTS_DATA.map((s) => s.code) } } });
+  await prisma.subject.deleteMany({
+    where: {
+      code: { notIn: SUBJECTS_DATA.map((s) => s.code) },
+      users: { none: { user: { isSeed: false } } },
+    },
+  });
   const subjectIds = createdSubjects.map((s) => s.id);
 
   // 3. Seed Interests

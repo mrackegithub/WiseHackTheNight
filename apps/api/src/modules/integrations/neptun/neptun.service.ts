@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type { PrismaClient } from '@prisma/client';
 import {
   courseFromTitle,
@@ -290,7 +291,16 @@ export async function applyIcsData(
           courseSubjectByNormName.set(key, { code: known.code, name: known.name });
           continue;
         }
-        const code = course.code || `NEPTUN-${key.toUpperCase().replace(/ /g, '-').slice(0, 40)}`;
+        let code = course.code;
+        if (!code) {
+          const slug = key.toUpperCase().replace(/ /g, '-');
+          if (slug.length > 32) {
+            const hash = createHash('sha256').update(key).digest('hex').slice(0, 6).toUpperCase();
+            code = `NEPTUN-${slug.slice(0, 25)}-${hash}`;
+          } else {
+            code = `NEPTUN-${slug}`;
+          }
+        }
         const created = await tx.subject.upsert({ where: { code }, update: {}, create: { code, name: course.name } });
         subjectIds.add(created.id);
         courseSubjectByNormName.set(key, { code: created.code, name: created.name });
@@ -392,6 +402,28 @@ export async function applyIcsData(
   return result;
 }
 
+export async function runNeptunSyncSweep(prisma: PrismaClient): Promise<{ synced: number; errors: number }> {
+  const activeConnections = await prisma.neptunConnection.findMany({
+    where: {
+      status: { not: 'NOT_CONNECTED' },
+      icsUrlEncrypted: { not: null },
+    },
+  });
+
+  let synced = 0;
+  let errors = 0;
+  for (const conn of activeConnections) {
+    try {
+      const url = decryptUrl(conn.icsUrlEncrypted!);
+      await performSync(prisma, conn.userId, url);
+      synced++;
+    } catch {
+      errors++;
+    }
+  }
+  return { synced, errors };
+}
+
 let syncInterval: NodeJS.Timeout | null = null;
 
 /**
@@ -405,21 +437,7 @@ export function startPeriodicNeptunResync(
 
   syncInterval = setInterval(async () => {
     try {
-      const activeConnections = await prisma.neptunConnection.findMany({
-        where: {
-          status: { not: 'NOT_CONNECTED' },
-          icsUrlEncrypted: { not: null },
-        },
-      });
-
-      for (const conn of activeConnections) {
-        try {
-          const url = decryptUrl(conn.icsUrlEncrypted!);
-          await performSync(prisma, conn.userId, url);
-        } catch {
-          // Log and continue to next user without crashing loop
-        }
-      }
+      await runNeptunSyncSweep(prisma);
     } catch {
       // Ignore background loop error
     }

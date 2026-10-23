@@ -297,6 +297,7 @@ export async function leaveGroup(
       where: { id: groupId },
       include: {
         members: { orderBy: { joinedAt: 'asc' } },
+        sessions: { select: { id: true, start: true } },
       },
     });
 
@@ -309,6 +310,21 @@ export async function leaveGroup(
       throw notFound('Not a member of this group', 'NOT_FOUND');
     }
 
+    const now = new Date();
+    const futureSessionIds = group.sessions
+      .filter((s) => s.start >= now)
+      .map((s) => s.id);
+
+    if (futureSessionIds.length > 0) {
+      await tx.calendarEvent.deleteMany({
+        where: {
+          userId,
+          source: 'STUDY_SESSION',
+          externalUid: { in: futureSessionIds },
+        },
+      });
+    }
+
     await tx.groupMember.delete({
       where: {
         groupId_userId: { groupId, userId },
@@ -317,6 +333,15 @@ export async function leaveGroup(
 
     const remainingMembers = group.members.filter((m) => m.userId !== userId);
     if (remainingMembers.length === 0) {
+      const allSessionIds = group.sessions.map((s) => s.id);
+      if (allSessionIds.length > 0) {
+        await tx.calendarEvent.deleteMany({
+          where: {
+            source: 'STUDY_SESSION',
+            externalUid: { in: allSessionIds },
+          },
+        });
+      }
       await tx.group.delete({ where: { id: groupId } });
       return;
     }
@@ -384,19 +409,31 @@ export async function getInvite(prisma: PrismaClient, userId: string, token: str
 
 /** Joins through an invite: works for invite-only groups too, as long as there's room. Idempotent. */
 export async function acceptInvite(prisma: PrismaClient, userId: string, token: string) {
-  const { group } = await validInvite(prisma, token);
-  if (!group.members.some((m) => m.userId === userId)) {
-    if (group.members.length >= group.maxSize) {
-      throw conflict('Group is full', 'GROUP_FULL');
+  const invite = await validInvite(prisma, token);
+  const groupId = invite.groupId;
+
+  await prisma.$transaction(async (tx) => {
+    const group = await tx.group.findUnique({
+      where: { id: groupId },
+      include: { members: { select: { userId: true } } },
+    });
+    if (!group) {
+      throw notFound('Group not found', 'NOT_FOUND');
     }
-    const userSubj = await prisma.userSubject.findUnique({
-      where: { userId_subjectId: { userId, subjectId: group.subjectId } },
-    });
-    await prisma.groupMember.create({
-      data: { groupId: group.id, userId, role: userSubj?.role ?? 'PEER', isOwner: false },
-    });
-  }
-  return getGroup(prisma, group.id);
+    if (!group.members.some((m) => m.userId === userId)) {
+      if (group.members.length >= group.maxSize) {
+        throw conflict('Group is full', 'GROUP_FULL');
+      }
+      const userSubj = await tx.userSubject.findUnique({
+        where: { userId_subjectId: { userId, subjectId: group.subjectId } },
+      });
+      await tx.groupMember.create({
+        data: { groupId: group.id, userId, role: userSubj?.role ?? 'PEER', isOwner: false },
+      });
+    }
+  });
+
+  return getGroup(prisma, groupId);
 }
 
 export async function getGroupSuggestedSlots(

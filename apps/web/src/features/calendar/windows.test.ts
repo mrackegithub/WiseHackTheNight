@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { readCachedWindows, validateWindows, writeCachedWindows } from './windows';
+import { DEFAULT_WINDOWS, fetchAvailabilityWindows, readCachedWindows, validateWindows, writeCachedWindows } from './windows';
 
 describe('validateWindows', () => {
   it('accepts separate ranges on the same day', () => {
@@ -32,5 +32,16 @@ describe('cached windows (stopgap)', () => {
     writeCachedWindows('u1', [{ weekday: 6, startTime: '10:00', endTime: '14:00' }]);
     expect(readCachedWindows('u1')).toEqual([{ weekday: 6, startTime: '10:00', endTime: '14:00' }]);
     expect(readCachedWindows('u2')).toBeNull();
+  });
+
+  it('fetches windows with fallback to cache or DEFAULT_WINDOWS', async () => {
+    writeCachedWindows('u3', [{ weekday: 7, startTime: '11:00', endTime: '15:00' }]);
+    // In unit test without MSW handler running for u3, fetchAvailabilityWindows falls back to cached
+    const windows = await fetchAvailabilityWindows('u3');
+    expect(windows).toEqual([{ weekday: 7, startTime: '11:00', endTime: '15:00' }]);
+
+    // For unknown user without cache, falls back to DEFAULT_WINDOWS
+    const defaultWin = await fetchAvailabilityWindows('unknown-user');
+    expect(defaultWin).toEqual(DEFAULT_WINDOWS);
   });
 });

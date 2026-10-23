@@ -2,15 +2,25 @@
   "name": "study-group-matcher",
   "private": true,
   "packageManager": "pnpm@9.12.0",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "dev": "pnpm -r --parallel --filter ./apps/* dev",
     "contract:lint": "pnpm --filter @sgm/contracts lint",
     "contract:gen": "pnpm --filter @sgm/contracts generate",
     "db:up": "docker compose up -d db",
     "db:seed": "pnpm --filter @sgm/api db:seed",
-    "check:ownership": "bash scripts/check-ownership.sh",
     "test": "pnpm -r test",
-    "typecheck": "pnpm -r typecheck"
+    "typecheck": "pnpm -r typecheck",
+    "vercel-build": "node scripts/build-vercel.js"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.19.3",
+    "argon2": "^0.45.1"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0",
+    "prisma": "^6.19.3"
   }
 }

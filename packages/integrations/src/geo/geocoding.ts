@@ -87,7 +87,7 @@ export class NominatimGeocoder {
     const results: GeoPointResult[] = data.map((item) => ({
       lat: parseFloat(item.lat),
       lng: parseFloat(item.lon),
-      label: item.display_name,
+      label: item.display_name.slice(0, 120),
     }));
 
     this.cache.set(cacheKey, {

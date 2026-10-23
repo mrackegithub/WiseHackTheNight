@@ -4,6 +4,11 @@ export const groupIdParamsSchema = z.object({
   groupId: z.string().uuid(),
 });
 
+export const sessionParamsSchema = z.object({
+  groupId: z.string().uuid(),
+  sessionId: z.string().uuid(),
+});
+
 export const createSessionSchema = z.object({
   start: z.string().refine((val) => !isNaN(Date.parse(val)), {
     message: 'Invalid start date-time',
@@ -17,5 +22,6 @@ export const createSessionSchema = z.object({
 });
 
 export type GroupIdParams = z.infer<typeof groupIdParamsSchema>;
+export type SessionParams = z.infer<typeof sessionParamsSchema>;
 export type CreateSessionInput = z.infer<typeof createSessionSchema>;
 

@@ -285,6 +285,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/me/availability/windows": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getMyAvailabilityWindows"];
+        put: operations["replaceMyAvailabilityWindowsAlias"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/matching/candidates": {
         parameters: {
             query?: never;
@@ -498,6 +514,26 @@ export interface paths {
         /** @description Schedules a session. If `bookingId` is given it must belong to this group. */
         post: operations["createGroupSession"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/groups/{groupId}/sessions/{sessionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                groupId: components["parameters"]["GroupId"];
+                sessionId: components["parameters"]["SessionId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** @description Cancels a group study session. */
+        delete: operations["cancelGroupSession"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1026,6 +1062,7 @@ export interface components {
         /** @description Max 31 days after `from`. */
         To: string;
         GroupId: string;
+        SessionId: string;
         InviteToken: string;
     };
     requestBodies: never;
@@ -1594,6 +1631,50 @@ export interface operations {
             };
         };
     };
+    getMyAvailabilityWindows: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WeeklyWindow"][];
+                };
+            };
+        };
+    };
+    replaceMyAvailabilityWindowsAlias: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WeeklyWindow"][];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WeeklyWindow"][];
+                };
+            };
+        };
+    };
     getCandidates: {
         parameters: {
             query: {
@@ -1999,6 +2080,37 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+        };
+    };
+    cancelGroupSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                groupId: components["parameters"]["GroupId"];
+                sessionId: components["parameters"]["SessionId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Session cancelled */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            404: components["responses"]["NotFound"];
         };
     };
     listLocations: {

@@ -40,6 +40,20 @@ export const groupHandlers = [
     }),
   ),
 
+  http.post(
+    url('/groups/:groupId/members'),
+    authed((user, { params }) => {
+      const group = db.groups.get(String(params.groupId));
+      if (!group) return notFound();
+      if (isMember(group, user.me.id)) return HttpResponse.json<Schemas['Group']>(toGroup(group));
+      if (!group.isOpen) return apiError(403, 'GROUP_CLOSED', 'This group is invite-only');
+      if (group.members.length >= group.maxSize) return apiError(409, 'GROUP_FULL', 'Group is full');
+      const role = user.subjects.find((s) => s.subject.id === group.subjectId)?.role ?? 'PEER';
+      group.members.push({ userId: user.me.id, role, isOwner: false, joinedAt: new Date().toISOString() });
+      return HttpResponse.json<Schemas['Group']>(toGroup(group));
+    }),
+  ),
+
   http.delete(
     url('/groups/:groupId/members'),
     authed((user, { params }) => {

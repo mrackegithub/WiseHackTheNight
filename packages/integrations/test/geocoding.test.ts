@@ -62,4 +62,29 @@ describe('NominatimGeocoder', () => {
     expect(res1).toEqual(res2);
     expect(fakeFetch).toHaveBeenCalledTimes(1); // Cached!
   });
+
+  it('truncates display_name to 120 characters', async () => {
+    const longName = 'A'.repeat(200);
+    const fakeResponse = [
+      {
+        lat: '47.497912',
+        lon: '19.040235',
+        display_name: longName,
+      },
+    ];
+
+    const fakeFetch: typeof fetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(fakeResponse), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    const geocoder = new NominatimGeocoder();
+    const result = await geocoder.geocode('Long address query', { fetcher: fakeFetch });
+
+    expect(result).toHaveLength(1);
+    expect(result[0].label).toHaveLength(120);
+    expect(result[0].label).toBe('A'.repeat(120));
+  });
 });

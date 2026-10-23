@@ -3,6 +3,7 @@ import type { paths } from '@sgm/contracts';
 import { validate } from '../../../core/validation.js';
 import {
   geocodeQuerySchema,
+  groupIdParamsSchema,
   listLocationsQuerySchema,
   suggestedLocationsQuerySchema,
 } from './locations.schemas.js';
@@ -33,7 +34,7 @@ const locationsRoutes: FastifyPluginAsync = async (app) => {
     '/groups/:groupId/suggested-locations',
     { preHandler: [app.authenticate] },
     async (req): Promise<SuggestedLocationsResponse> => {
-      const { groupId } = req.params as { groupId: string };
+      const { groupId } = validate(groupIdParamsSchema, req.params);
       const query = validate(suggestedLocationsQuerySchema, req.query);
       return locationsService.getGroupSuggestedLocations(app.prisma, groupId, query);
     },

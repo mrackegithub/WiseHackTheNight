@@ -445,6 +445,39 @@ paths:
                 type: array
                 items: { $ref: "#/components/schemas/WeeklyWindow" }
 
+  /me/availability/windows:
+    get:
+      tags: [calendar]
+      operationId: getMyAvailabilityWindows
+      x-owner: integrations
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/WeeklyWindow" }
+    put:
+      tags: [calendar]
+      operationId: replaceMyAvailabilityWindowsAlias
+      x-owner: integrations
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items: { $ref: "#/components/schemas/WeeklyWindow" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/WeeklyWindow" }
+
   # ───────────────────────────── matching ─────────────────────────────
   /matching/candidates:
     get:
@@ -721,6 +754,25 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
 
+  /groups/{groupId}/sessions/{sessionId}:
+    parameters:
+      - $ref: "#/components/parameters/GroupId"
+      - $ref: "#/components/parameters/SessionId"
+    delete:
+      tags: [sessions]
+      operationId: cancelGroupSession
+      x-owner: backend
+      description: Cancels a group study session.
+      responses:
+        "204":
+          description: Session cancelled
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   # ───────────────────────────── locations & rooms ─────────────────────────────
   /locations:
     get:
@@ -843,6 +895,7 @@ components:
       description: Max 31 days after `from`.
       schema: { type: string, format: date-time }
     GroupId: { name: groupId, in: path, required: true, schema: { type: string, format: uuid } }
+    SessionId: { name: sessionId, in: path, required: true, schema: { type: string, format: uuid } }
     InviteToken: { name: token, in: path, required: true, schema: { type: string, pattern: "^[A-Za-z0-9_-]{16,64}$" } }
 
   responses:

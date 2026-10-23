@@ -85,12 +85,22 @@ export async function createGroupSession(
   if (data.bookingId) {
     const booking = await prisma.booking.findUnique({
       where: { id: data.bookingId },
+      include: { room: true },
     });
     if (!booking) {
       throw notFound('Booking not found', 'NOT_FOUND');
     }
     if (booking.groupId !== groupId) {
       throw validationError('Booking does not belong to this group', [{ path: 'bookingId', issue: 'must be a booking of this group' }]);
+    }
+    if (booking.status !== 'CONFIRMED' && booking.status !== 'PENDING') {
+      throw validationError('Booking is not confirmed or pending', [{ path: 'bookingId', issue: 'must be CONFIRMED or PENDING' }]);
+    }
+    if (booking.start.getTime() !== start.getTime() || booking.end.getTime() !== end.getTime()) {
+      throw validationError('Booking times do not match session times', [{ path: 'bookingId', issue: 'must match booking start and end' }]);
+    }
+    if (!data.locationId && booking.room?.locationId) {
+      data.locationId = booking.room.locationId;
     }
   }
 
@@ -202,5 +212,34 @@ export async function createGroupSession(
     bookingId: session.bookingId,
     status: session.status,
   };
+}
+
+export async function cancelGroupSession(
+  prisma: PrismaClient,
+  userId: string,
+  groupId: string,
+  sessionId: string,
+): Promise<void> {
+  const session = await prisma.studySession.findUnique({
+    where: { id: sessionId },
+    include: {
+      group: {
+        include: {
+          members: { select: { userId: true } },
+        },
+      },
+    },
+  });
+
+  if (!session || session.groupId !== groupId) {
+    throw notFound('Session not found', 'NOT_FOUND');
+  }
+
+  const isMember = session.group.members.some((m) => m.userId === userId);
+  if (!isMember) {
+    throw forbidden('You are not a member of this group', 'FORBIDDEN');
+  }
+
+  await cancelStudySession(prisma, sessionId);
 }
 

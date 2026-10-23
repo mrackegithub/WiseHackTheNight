@@ -17,7 +17,13 @@ export const userSubjectInputSchema = z.object({
   confidence: z.number().int().min(1).max(5).default(3),
 });
 
-export const replaceSubjectsSchema = z.array(userSubjectInputSchema).max(30);
+export const replaceSubjectsSchema = z
+  .array(userSubjectInputSchema)
+  .max(30)
+  .refine((items) => new Set(items.map((i) => i.subjectId)).size === items.length, {
+    message: 'Duplicate subjects are not allowed',
+    path: ['subjectId'],
+  });
 
 export const locationTypeEnum = z.enum(['LIBRARY', 'CAMPUS_ROOM', 'CAFE', 'COWORKING', 'OTHER']);
 export const studyModeEnum = z.enum(['IN_PERSON', 'ONLINE', 'EITHER']);

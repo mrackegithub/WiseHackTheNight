@@ -7,10 +7,15 @@ const DURATIONS = [30, 45, 60, 90, 120, 150, 180, 240];
 /** Possible start times inside a free slot, every 15 min, leaving room for at least 30 min. */
 export function startOptions(slot: { start: string; end: string }): string[] {
   const end = inZone(slot.end);
+  const rawStart = inZone(slot.start);
   const options: string[] = [];
   // round the first option up to the next quarter hour
-  let t = inZone(slot.start);
+  let t = rawStart;
   if (t.minute % STEP_MIN || t.second) t = t.set({ minute: Math.ceil((t.minute + 1) / STEP_MIN) * STEP_MIN, second: 0, millisecond: 0 });
+  // If rounding up pushes start so far forward that min duration doesn't fit, fall back to raw start
+  if (t.plus({ minutes: MIN_SESSION }) > end && rawStart.plus({ minutes: MIN_SESSION }) <= end) {
+    t = rawStart;
+  }
   for (; t.plus({ minutes: MIN_SESSION }) <= end; t = t.plus({ minutes: STEP_MIN })) options.push(toApiTime(t));
   return options;
 }

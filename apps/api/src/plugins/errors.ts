@@ -52,6 +52,28 @@ export default fp(
         });
       }
 
+      // Prisma error mapping
+      if (err.code === 'P2002') {
+        return reply.status(409).send({
+          code: 'CONFLICT',
+          message: 'Resource already exists',
+        });
+      }
+
+      if (err.code === 'P2025') {
+        return reply.status(404).send({
+          code: 'NOT_FOUND',
+          message: 'Resource not found',
+        });
+      }
+
+      if (err.code === 'P2003') {
+        return reply.status(422).send({
+          code: 'VALIDATION_FAILED',
+          message: 'Foreign key constraint violation',
+        });
+      }
+
       // Handled status codes
       const statusCode = typeof err.statusCode === 'number' && err.statusCode >= 400 ? err.statusCode : 500;
 

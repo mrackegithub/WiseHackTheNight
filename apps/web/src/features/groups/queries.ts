@@ -58,6 +58,19 @@ export function useGroupSessions(groupId: string) {
   });
 }
 
+export function useJoinGroup(groupId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => unwrap(api.POST('/groups/{groupId}/members', { params: { path: { groupId } } })),
+    onSuccess: (group) => {
+      queryClient.setQueryData(groupKeys.detail(groupId), group);
+      void queryClient.invalidateQueries({ queryKey: groupKeys.detail(groupId) });
+      void queryClient.invalidateQueries({ queryKey: groupKeys.list });
+      void queryClient.invalidateQueries({ queryKey: groupKeys.all });
+    },
+  });
+}
+
 export function useLeaveGroup(groupId: string) {
   const queryClient = useQueryClient();
   return useMutation({

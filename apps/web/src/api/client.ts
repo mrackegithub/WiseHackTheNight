@@ -13,7 +13,10 @@ interface AuthFetchOptions {
   fetch?: (input: Request) => Promise<Response>;
 }
 
-const isAuthEndpoint = (url: string) => new URL(url).pathname.includes('/auth/');
+const isAuthEndpoint = (url: string) => {
+  const pathname = new URL(url, typeof window !== 'undefined' ? window.location.origin : 'http://localhost').pathname;
+  return pathname.includes('/auth/');
+};
 
 /**
  * fetch wrapper that adds the Bearer token and, on a 401, refreshes the access token once
@@ -75,12 +78,25 @@ export function onAuthFailure(listener: () => void) {
   };
 }
 
+export const authFetch = createAuthFetch({
+  baseUrl: config.apiUrl,
+  tokens: tokenStore,
+  onAuthFailure: () => authFailureListeners.forEach((l) => l()),
+});
+
+/** Generic fetch helper with auth headers and error handling. */
+export async function apiFetch<T = unknown>(path: string, init?: RequestInit): Promise<T> {
+  const baseUrl = config.apiUrl;
+  const url = path.startsWith('http') ? path : `${baseUrl}${path.startsWith('/') ? '' : '/'}${path}`;
+  const res = await authFetch(new Request(url, init));
+  if (!res.ok) {
+    throw new Error(`API fetch failed: ${res.status}`);
+  }
+  return res.json() as Promise<T>;
+}
+
 /** Typed client for the whole contract: `api.GET('/me')`, `api.POST('/auth/login', { body })`, ... */
 export const api = createClient<paths>({
   baseUrl: config.apiUrl,
-  fetch: createAuthFetch({
-    baseUrl: config.apiUrl,
-    tokens: tokenStore,
-    onAuthFailure: () => authFailureListeners.forEach((l) => l()),
-  }),
+  fetch: authFetch,
 });

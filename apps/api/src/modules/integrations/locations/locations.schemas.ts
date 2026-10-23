@@ -24,6 +24,11 @@ export const suggestedLocationsQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(20).default(5),
 });
 
+export const groupIdParamsSchema = z.object({
+  groupId: z.string().uuid(),
+});
+
 export type ListLocationsQuery = z.infer<typeof listLocationsQuerySchema>;
 export type GeocodeQuery = z.infer<typeof geocodeQuerySchema>;
 export type SuggestedLocationsQuery = z.infer<typeof suggestedLocationsQuerySchema>;
+export type GroupIdParams = z.infer<typeof groupIdParamsSchema>;

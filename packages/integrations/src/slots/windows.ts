@@ -41,6 +41,14 @@ export function expandWeeklyWindows(
         !isNaN(w.startMinute) &&
         !isNaN(w.endHour) &&
         !isNaN(w.endMinute) &&
+        w.startHour >= 0 &&
+        w.startHour <= 23 &&
+        w.endHour >= 0 &&
+        w.endHour <= 23 &&
+        w.startMinute >= 0 &&
+        w.startMinute <= 59 &&
+        w.endMinute >= 0 &&
+        w.endMinute <= 59 &&
         (w.endHour > w.startHour || (w.endHour === w.startHour && w.endMinute > w.startMinute)),
     );
 

@@ -7,6 +7,7 @@ import {
   subtractSlots,
   totalDurationMinutes,
 } from '../src/slots/slots';
+import { expandWeeklyWindows, type WeeklyWindow } from '../src/slots/windows';
 import type { TimeSlot } from '../src/ports';
 
 function makeSlot(isoStart: string, isoEnd: string): TimeSlot {
@@ -227,6 +228,48 @@ describe('duration helpers', () => {
       makeSlot('2026-04-10T09:00:00Z', '2026-04-10T11:00:00Z'), // overlaps 09-10, total 08-11 is 180m
     ];
     expect(totalDurationMinutes(slots)).toBe(180);
+  });
+});
+
+describe('expandWeeklyWindows boundary checks', () => {
+  const range: TimeSlot = {
+    start: new Date('2026-04-13T00:00:00Z'), // Monday
+    end: new Date('2026-04-19T23:59:59Z'), // Sunday
+  };
+
+  it('rejects invalid hours (< 0 or > 23)', () => {
+    const invalidWindows: WeeklyWindow[] = [
+      { weekday: 1, startTime: '-1:00', endTime: '10:00' },
+      { weekday: 1, startTime: '24:00', endTime: '25:00' },
+      { weekday: 1, startTime: '10:00', endTime: '24:00' },
+    ];
+    expect(expandWeeklyWindows(invalidWindows, range)).toEqual([]);
+  });
+
+  it('rejects invalid minutes (< 0 or > 59)', () => {
+    const invalidWindows: WeeklyWindow[] = [
+      { weekday: 1, startTime: '09:-5', endTime: '10:00' },
+      { weekday: 1, startTime: '09:60', endTime: '10:00' },
+      { weekday: 1, startTime: '09:00', endTime: '10:60' },
+    ];
+    expect(expandWeeklyWindows(invalidWindows, range)).toEqual([]);
+  });
+
+  it('rejects end time that is not strictly after start time', () => {
+    const invalidWindows: WeeklyWindow[] = [
+      { weekday: 1, startTime: '10:00', endTime: '10:00' },
+      { weekday: 1, startTime: '12:00', endTime: '10:00' },
+      { weekday: 1, startTime: '10:30', endTime: '10:15' },
+    ];
+    expect(expandWeeklyWindows(invalidWindows, range)).toEqual([]);
+  });
+
+  it('accepts valid boundary hours and minutes (00:00 to 23:59)', () => {
+    const validWindows: WeeklyWindow[] = [
+      { weekday: 1, startTime: '00:00', endTime: '23:59' },
+    ];
+    const slots = expandWeeklyWindows(validWindows, range);
+    expect(slots.length).toBeGreaterThan(0);
   });
 });
 

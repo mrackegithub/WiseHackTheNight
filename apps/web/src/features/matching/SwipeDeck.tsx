@@ -16,7 +16,11 @@ interface SwipeDeckProps {
   onMatch: (match: Schemas['Match'], candidate: Schemas['Candidate']) => void;
 }
 
-const isTyping = (el: EventTarget | null) => el instanceof HTMLElement && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName));
+const isTyping = (el: EventTarget | null) =>
+  el instanceof HTMLElement &&
+  (el.isContentEditable ||
+    (['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON'].includes(el.tagName) &&
+      !['Like', 'Pass'].includes(el.getAttribute('aria-label') ?? '')));
 
 /** The deck: top card + Like / Pass (buttons or ← / → keys). Fetches more when it runs low. */
 export function SwipeDeck({ subjectId, kind, onMatch }: SwipeDeckProps) {
@@ -31,14 +35,22 @@ export function SwipeDeck({ subjectId, kind, onMatch }: SwipeDeckProps) {
   const decide = useCallback(
     (direction: Direction) => {
       if (!top) return;
+      const targetId = top.id;
       setExitDirection(direction === 'LIKE' ? 1 : -1); // the card flies the way it was swiped
-      setGone((prev) => new Set(prev).add(top.id));
+      setGone((prev) => new Set(prev).add(targetId));
       swipe.mutate(
         { targetKind: top.kind, targetId: top.id, subjectId, direction },
         {
           onSuccess: (result) => {
             if (result.match) onMatch(result.match, top);
             if (queue.length <= 2) void candidates.refetch(); // swiped ones are excluded server-side
+          },
+          onError: () => {
+            setGone((prev) => {
+              const next = new Set(prev);
+              next.delete(targetId);
+              return next;
+            });
           },
         },
       );

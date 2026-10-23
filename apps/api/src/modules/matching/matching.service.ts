@@ -233,12 +233,32 @@ export async function getCandidates(
       ...Array.from(swipedTargetIds),
     ]);
 
+    const userSubjectWhere: Prisma.UserSubjectWhereInput = {
+      subjectId,
+      userId: { notIn: Array.from(excludedUserIds) },
+    };
+
+    if (me.mode === 'IN_PERSON' && me.point && me.maxDistanceKm) {
+      const latDelta = (me.maxDistanceKm / 111) * 1.2;
+      const cosLat = Math.cos((me.point.lat * Math.PI) / 180);
+      const lngDelta = (me.maxDistanceKm / (111 * Math.max(0.1, cosLat))) * 1.2;
+
+      userSubjectWhere.user = {
+        OR: [
+          {
+            homeLat: { gte: me.point.lat - latDelta, lte: me.point.lat + latDelta },
+            homeLng: { gte: me.point.lng - lngDelta, lte: me.point.lng + lngDelta },
+          },
+          { homeLat: null },
+          { homeLng: null },
+          { preferences: { mode: { in: ['ONLINE', 'EITHER'] } } },
+        ],
+      };
+    }
+
     // Pre-select up to 200 users taking the same subject
     const candidateEnrollments = await prisma.userSubject.findMany({
-      where: {
-        subjectId,
-        userId: { notIn: Array.from(excludedUserIds) },
-      },
+      where: userSubjectWhere,
       include: candidateInclude,
       take: 200,
     });
@@ -715,22 +735,30 @@ export async function listMatches(
 ) {
   const { cursor, limit } = query;
 
-  const matches = await prisma.match.findMany({
-    where: {
-      OR: [{ userAId: currentUserId }, { userBId: currentUserId }],
-    },
-    take: limit + 1,
-    cursor: cursor ? { id: cursor } : undefined,
-    skip: cursor ? 1 : 0,
-    orderBy: { id: 'desc' },
-    include: {
-      group: {
-        include: {
-          subject: true,
+  let matches;
+  try {
+    matches = await prisma.match.findMany({
+      where: {
+        OR: [{ userAId: currentUserId }, { userBId: currentUserId }],
+      },
+      take: limit + 1,
+      cursor: cursor ? { id: cursor } : undefined,
+      skip: cursor ? 1 : 0,
+      orderBy: { id: 'desc' },
+      include: {
+        group: {
+          include: {
+            subject: true,
+          },
         },
       },
-    },
-  });
+    });
+  } catch (err: unknown) {
+    if ((err as { code?: string })?.code === 'P2025') {
+      return { items: [], nextCursor: null };
+    }
+    throw err;
+  }
 
   let nextCursor: string | null = null;
   if (matches.length > limit) {

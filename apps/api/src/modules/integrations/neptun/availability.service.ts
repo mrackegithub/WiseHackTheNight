@@ -2,6 +2,7 @@ import type { PrismaClient } from '@prisma/client';
 import {
   AvailabilityServiceImpl,
   DateTime,
+  DEFAULT_WEEKLY_WINDOWS,
   type AvailabilityDb,
   type AvailabilityService,
   type TimeSlot,
@@ -124,6 +125,30 @@ export async function getMyAvailability(
   return freeSlots.map((s) => ({
     start: s.start.toISOString(),
     end: s.end.toISOString(),
+  }));
+}
+
+export async function getMyAvailabilityWindows(
+  prisma: PrismaClient,
+  userId: string,
+): Promise<WeeklyWindowResponse[]> {
+  const windows = await prisma.availabilityWindow.findMany({
+    where: { userId },
+    orderBy: [{ weekday: 'asc' }, { startTime: 'asc' }],
+  });
+
+  if (windows.length === 0) {
+    return DEFAULT_WEEKLY_WINDOWS.map((w) => ({
+      weekday: w.weekday,
+      startTime: w.startTime,
+      endTime: w.endTime,
+    }));
+  }
+
+  return windows.map((w) => ({
+    weekday: w.weekday,
+    startTime: w.startTime,
+    endTime: w.endTime,
   }));
 }
 

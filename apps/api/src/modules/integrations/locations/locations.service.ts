@@ -81,7 +81,7 @@ export async function geocodeAddress(
   return results.map((r) => ({
     lat: r.lat,
     lng: r.lng,
-    label: r.label,
+    label: r.label.slice(0, 120),
   }));
 }
 

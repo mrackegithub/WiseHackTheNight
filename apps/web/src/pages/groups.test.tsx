@@ -58,6 +58,21 @@ describe('Groups', () => {
     const sessions = await screen.findByRole('region', { name: 'Sessions' });
     expect(await within(sessions).findByRole('link', { name: 'Online meeting' })).toHaveAttribute('href', 'https://meet.example.com/algo-night-owls');
     expect(screen.queryByRole('button', { name: 'Leave group' })).not.toBeInTheDocument(); // not a member
+    expect(screen.getByRole('button', { name: 'Join group' })).toBeInTheDocument();
+  });
+
+  it('allows joining an open group directly from the group page', async () => {
+    const user = userEvent.setup();
+    loginAsDemo();
+    renderApp(`/groups/${ALGO_OWLS}`);
+
+    const joinBtn = await screen.findByRole('button', { name: 'Join group' });
+    expect(joinBtn).toBeInTheDocument();
+    await user.click(joinBtn);
+
+    expect(await screen.findByText('You joined Algo Night Owls!')).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Invite people' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Leave group' })).toBeInTheDocument();
   });
 
   it('leaves a group after confirmation', async () => {

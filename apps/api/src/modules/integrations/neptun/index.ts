@@ -102,6 +102,12 @@ const neptunRoutes: FastifyPluginAsync = async (app) => {
     },
   );
 
+  // GET /integrations/neptun/cron-sync
+  app.get('/integrations/neptun/cron-sync', async (_req, reply) => {
+    await neptunService.runNeptunSyncSweep(app.prisma);
+    return reply.status(200).send({ ok: true });
+  });
+
   // GET /me/schedule
   app.get(
     '/me/schedule',
@@ -157,6 +163,29 @@ const neptunRoutes: FastifyPluginAsync = async (app) => {
   // PUT /me/availability
   app.put(
     '/me/availability',
+    { preHandler: [app.authenticate] },
+    async (req): Promise<AvailabilityPutResponse> => {
+      const windows = validate(replaceAvailabilitySchema, req.body);
+      return availabilityService.replaceMyAvailabilityWindows(
+        app.prisma,
+        req.user.sub,
+        windows,
+      );
+    },
+  );
+
+  // GET /me/availability/windows
+  app.get(
+    '/me/availability/windows',
+    { preHandler: [app.authenticate] },
+    async (req): Promise<AvailabilityPutResponse> => {
+      return availabilityService.getMyAvailabilityWindows(app.prisma, req.user.sub);
+    },
+  );
+
+  // PUT /me/availability/windows
+  app.put(
+    '/me/availability/windows',
     { preHandler: [app.authenticate] },
     async (req): Promise<AvailabilityPutResponse> => {
       const windows = validate(replaceAvailabilitySchema, req.body);

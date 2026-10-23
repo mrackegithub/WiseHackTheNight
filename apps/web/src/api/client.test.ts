@@ -94,4 +94,12 @@ describe('createAuthFetch', () => {
     expect(res.status).toBe(401);
     expect(server.refreshCalls()).toBe(0);
   });
+
+  it('handles relative request URLs without throwing Invalid URL', async () => {
+    const server = fakeServer();
+    const authFetch = createAuthFetch({ baseUrl: '/api/v1', tokens: memoryTokens({ accessToken: 'old', refreshToken: 'r', expiresIn: 900 }), fetch: server.fetch });
+    const req = { url: '/api/v1/me', clone: () => req, headers: new Headers(), text: async () => '' } as unknown as Request;
+    const res = await authFetch(req);
+    expect(res.status).toBe(200);
+  });
 });

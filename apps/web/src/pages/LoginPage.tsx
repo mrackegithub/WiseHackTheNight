@@ -76,6 +76,19 @@ export function LoginPage() {
         <Button type="submit" loading={mutation.isPending}>
           Log in
         </Button>
+        <Button
+          type="button"
+          variant="secondary"
+          disabled={mutation.isPending}
+          onClick={() => {
+            const demo = { email: 'demo@sgm.local', password: 'password123' };
+            setValues(demo);
+            setErrors({});
+            mutation.mutate(demo);
+          }}
+        >
+          Try demo account (demo@sgm.local)
+        </Button>
         {config.useMocks && (
           <p className="text-center text-xs text-slate-500">
             Mock mode: <code>demo@sgm.local</code> / <code>password123</code>

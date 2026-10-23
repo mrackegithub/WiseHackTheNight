@@ -17,7 +17,7 @@ import { calendarKeys } from './queries';
 import { icsUploadForm } from './upload';
 
 const MAX_FILE_BYTES = 2 * 1024 * 1024;
-const FEED_URL = /^(https?|webcal):\/\/\S+$/i;
+const FEED_URL = /^(https?|webcals?):\/\/\S+$/i;
 const neptunKey = ['me', 'neptun'] as const;
 
 const statusBadge: Record<Schemas['NeptunConnection']['status'], { label: string; className: string }> = {
@@ -59,7 +59,10 @@ export function NeptunPanel() {
         toast.success('Neptun connected. Your classes are in the calendar.');
       }
     },
-    onError: (err) => setUrlError(fieldErrors(err).icsUrl),
+    onError: (err) => {
+      const field = fieldErrors(err).icsUrl;
+      setUrlError(field ?? messageForError(err));
+    },
   });
 
   const upload = useMutation({

@@ -375,7 +375,7 @@ const COURSES: Record<string, { name: string; room: string; lectures: Slot[]; pr
     name: 'Basics of Electrical Engineering',
     room: 'Déli 0-823',
     lectures: [{ weekday: 3, period: 0 }],
-    practices: [{ weekday: 4, period: 2 }, { weekday: 1, period: 4 }, { weekday: 5, period: 2 }],
+    practices: [{ weekday: 4, period: 0 }, { weekday: 1, period: 4 }, { weekday: 5, period: 2 }],
   },
   'BME-PROG1': {
     name: 'Basics of Programming',
@@ -393,13 +393,13 @@ const COURSES: Record<string, { name: string; room: string; lectures: Slot[]; pr
     name: 'Study Group Seminar 1',
     room: 'IB 110',
     lectures: [],
-    practices: [{ weekday: 2, period: 2 }, { weekday: 3, period: 3 }, { weekday: 5, period: 2 }],
+    practices: [{ weekday: 5, period: 0 }, { weekday: 3, period: 3 }, { weekday: 5, period: 2 }],
   },
   'BME-HUN1': {
     name: 'Hungarian Language and Culture 1',
     room: 'Északi 0.83',
     lectures: [],
-    practices: [{ weekday: 2, period: 3 }, { weekday: 4, period: 3 }],
+    practices: [{ weekday: 5, period: 1 }, { weekday: 4, period: 3 }],
   },
 };
 
@@ -442,10 +442,8 @@ export async function seedIntegrations(
 ): Promise<void> {
   // 1. Clean previous integration seed data safely
   await prisma.studySession.updateMany({
-    data: {
-      bookingId: null,
-      locationId: null,
-    },
+    where: { OR: [{ locationId: { not: null } }, { bookingId: { not: null } }] },
+    data: { locationId: null, bookingId: null },
   });
   await prisma.booking.deleteMany();
   await prisma.room.deleteMany();
@@ -506,6 +504,9 @@ export async function seedIntegrations(
 
   // 5. Study hours and timetables (classes, jobs, hobbies)
   await seedSchedules(prisma, targetUserIds);
+
+  // 6. Realistic room bookings & upcoming study sessions for demo user's matched groups
+  await seedDemoUpcomingSessions(prisma);
 }
 
 /**
@@ -623,6 +624,203 @@ export async function seedSchedules(prisma: PrismaClient, targetUserIds: string[
       data: calendarEvents.slice(i, i + 1000),
       skipDuplicates: true,
     });
+  }
+}
+
+/**
+ * Seed realistic room bookings (Booking rows) and upcoming StudySessions with locationId
+ * and bookingId + mirrored CalendarEvent (source: 'STUDY_SESSION') for demo@sgm.local's
+ * matched groups (matchGroup1 and matchGroup2).
+ */
+async function seedDemoUpcomingSessions(prisma: PrismaClient): Promise<void> {
+  const demoUser = await prisma.user.findUnique({
+    where: { email: 'demo@sgm.local' },
+  });
+  if (!demoUser) return;
+
+  const demoGroups = await prisma.group.findMany({
+    where: {
+      members: { some: { userId: demoUser.id } },
+    },
+    include: {
+      members: { select: { userId: true } },
+      subject: { select: { id: true, code: true, name: true } },
+    },
+    orderBy: { createdAt: 'asc' },
+  });
+
+  const matchGroup1 = demoGroups.find((g) => g.subject?.code === 'BME-PROG1') ?? demoGroups[0];
+  const matchGroup2 = demoGroups.find((g) => g.subject?.code === 'BME-CALC1') ?? demoGroups[1];
+
+  if (!matchGroup1 && !matchGroup2) return;
+
+  // Clean previous sessions and bookings for demo groups to ensure idempotency
+  const targetGroups = [matchGroup1, matchGroup2].filter((g): g is NonNullable<typeof g> => Boolean(g));
+  const targetGroupIds = targetGroups.map((g) => g.id);
+  const existingSessions = await prisma.studySession.findMany({
+    where: { groupId: { in: targetGroupIds } },
+    select: { id: true, bookingId: true },
+  });
+
+  if (existingSessions.length > 0) {
+    const sessionIds = existingSessions.map((s) => s.id);
+    const bookingIds = existingSessions.map((s) => s.bookingId).filter((id): id is string => Boolean(id));
+
+    await prisma.calendarEvent.deleteMany({
+      where: { source: 'STUDY_SESSION', externalUid: { in: sessionIds } },
+    });
+    await prisma.studySession.deleteMany({
+      where: { id: { in: sessionIds } },
+    });
+    if (bookingIds.length > 0) {
+      await prisma.booking.deleteMany({
+        where: { id: { in: bookingIds } },
+      });
+    }
+  }
+
+  // Find suitable rooms
+  const bmeBuildingI = await prisma.location.findFirst({
+    where: { osmId: 'osm-bme-building-i-5' },
+    include: { rooms: true },
+  });
+  const bmeLibrary = await prisma.location.findFirst({
+    where: { osmId: 'osm-bme-omikk-1' },
+    include: { rooms: true },
+  });
+  const fallbackRooms = await prisma.room.findMany({ take: 2 });
+
+  const room1 = bmeBuildingI?.rooms.find((r) => r.name.includes('Hackerspace')) ?? bmeBuildingI?.rooms[0] ?? fallbackRooms[0];
+  const room2 = bmeLibrary?.rooms.find((r) => r.name.includes('Study Pod')) ?? bmeLibrary?.rooms[0] ?? fallbackRooms[1] ?? fallbackRooms[0];
+
+  if (!room1 || !room2) return;
+
+  const occupiedSlots: Array<{ start: Date; end: Date }> = [];
+
+  const findSlot = async (memberIds: string[], startDayOffset: number): Promise<{ start: Date; end: Date }> => {
+    const now = DateTime.now().setZone('Europe/Budapest');
+    for (let offset = startDayOffset; offset < startDayOffset + 14; offset++) {
+      const day = now.plus({ days: offset });
+      if (day.weekday > 5) continue; // Weekdays only (Mon-Fri)
+
+      const candidateTimes = [
+        { startHour: 16, startMin: 30, endHour: 18, endMin: 0 },
+        { startHour: 14, startMin: 0, endHour: 15, endMin: 30 },
+        { startHour: 10, startMin: 15, endHour: 11, endMin: 45 },
+      ];
+
+      for (const time of candidateTimes) {
+        const slotStart = day.set({ hour: time.startHour, minute: time.startMin, second: 0, millisecond: 0 }).toJSDate();
+        const slotEnd = day.set({ hour: time.endHour, minute: time.endMin, second: 0, millisecond: 0 }).toJSDate();
+
+        if (slotStart.getTime() <= Date.now()) continue;
+
+        const overlapsOccupied = occupiedSlots.some((s) => slotStart < s.end && slotEnd > s.start);
+        if (overlapsOccupied) continue;
+
+        const hasClash = await prisma.calendarEvent.findFirst({
+          where: {
+            userId: { in: memberIds },
+            start: { lt: slotEnd },
+            end: { gt: slotStart },
+          },
+        });
+        if (hasClash) continue;
+
+        return { start: slotStart, end: slotEnd };
+      }
+    }
+
+    const fallbackStart = now.plus({ days: startDayOffset }).set({ hour: 16, minute: 30, second: 0, millisecond: 0 }).toJSDate();
+    return { start: fallbackStart, end: new Date(fallbackStart.getTime() + 90 * 60 * 1000) };
+  };
+
+  // Seed for matchGroup1
+  if (matchGroup1) {
+    const memberIds = matchGroup1.members.map((m) => m.userId);
+    const slot1 = await findSlot(memberIds, 2);
+    occupiedSlots.push(slot1);
+
+    const booking1 = await prisma.booking.create({
+      data: {
+        roomId: room1.id,
+        groupId: matchGroup1.id,
+        bookedById: demoUser.id,
+        start: slot1.start,
+        end: slot1.end,
+        status: 'CONFIRMED',
+      },
+    });
+
+    const session1 = await prisma.studySession.create({
+      data: {
+        groupId: matchGroup1.id,
+        start: slot1.start,
+        end: slot1.end,
+        locationId: room1.locationId,
+        bookingId: booking1.id,
+        status: 'PLANNED',
+      },
+    });
+
+    for (const member of matchGroup1.members) {
+      await prisma.calendarEvent.create({
+        data: {
+          userId: member.userId,
+          source: 'STUDY_SESSION',
+          externalUid: session1.id,
+          title: `Study Session: ${matchGroup1.name}`,
+          start: slot1.start,
+          end: slot1.end,
+          room: room1.name,
+          subjectCode: matchGroup1.subject?.code ?? null,
+        },
+      });
+    }
+  }
+
+  // Seed for matchGroup2
+  if (matchGroup2 && matchGroup2.id !== matchGroup1?.id) {
+    const memberIds = matchGroup2.members.map((m) => m.userId);
+    const slot2 = await findSlot(memberIds, 4);
+    occupiedSlots.push(slot2);
+
+    const booking2 = await prisma.booking.create({
+      data: {
+        roomId: room2.id,
+        groupId: matchGroup2.id,
+        bookedById: demoUser.id,
+        start: slot2.start,
+        end: slot2.end,
+        status: 'CONFIRMED',
+      },
+    });
+
+    const session2 = await prisma.studySession.create({
+      data: {
+        groupId: matchGroup2.id,
+        start: slot2.start,
+        end: slot2.end,
+        locationId: room2.locationId,
+        bookingId: booking2.id,
+        status: 'PLANNED',
+      },
+    });
+
+    for (const member of matchGroup2.members) {
+      await prisma.calendarEvent.create({
+        data: {
+          userId: member.userId,
+          source: 'STUDY_SESSION',
+          externalUid: session2.id,
+          title: `Study Session: ${matchGroup2.name}`,
+          start: slot2.start,
+          end: slot2.end,
+          room: room2.name,
+          subjectCode: matchGroup2.subject?.code ?? null,
+        },
+      });
+    }
   }
 }
 

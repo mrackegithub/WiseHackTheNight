@@ -7,7 +7,7 @@ import { Spinner } from '../components/Spinner';
 import { useAuth } from '../features/auth/auth-context';
 import { usePageTitle } from '../hooks/usePageTitle';
 import { InviteModal } from '../features/groups/InviteModal';
-import { useGroup, useLeaveGroup } from '../features/groups/queries';
+import { useGroup, useJoinGroup, useLeaveGroup } from '../features/groups/queries';
 import { SessionsList } from '../features/groups/SessionsList';
 import { SuggestedLocations } from '../features/groups/SuggestedLocations';
 import { SuggestedSlots } from '../features/groups/SuggestedSlots';
@@ -23,6 +23,7 @@ export function GroupPage() {
   const navigate = useNavigate();
   const group = useGroup(groupId);
   const leave = useLeaveGroup(groupId);
+  const join = useJoinGroup(groupId);
   const location = useLocation();
   const [confirmLeave, setConfirmLeave] = useState(false);
   const [scheduling, setScheduling] = useState<Schemas['SuggestedSlot'] | null>(null);
@@ -73,7 +74,21 @@ export function GroupPage() {
           <h1 className="text-2xl font-bold tracking-tight">{g.name}</h1>
           {g.description && <p className="mt-1 text-slate-600">{g.description}</p>}
         </div>
-        {isMember && <Button onClick={() => setInviting(true)}>Invite people</Button>}
+        {isMember ? (
+          <Button onClick={() => setInviting(true)}>Invite people</Button>
+        ) : (
+          <Button
+            onClick={() =>
+              join.mutate(undefined, {
+                onSuccess: () => toast.success(`You joined ${g.name}!`),
+                onError: (err) => toast.error(messageForError(err)),
+              })
+            }
+            loading={join.isPending}
+          >
+            Join group
+          </Button>
+        )}
       </header>
       {inviting && isMember && <InviteModal group={g} onClose={() => setInviting(false)} />}
 

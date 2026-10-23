@@ -101,6 +101,11 @@ export const calendarHandlers = [
   ),
 
   http.get(
+    url('/me/availability/windows'),
+    authed((user) => HttpResponse.json<Schemas['WeeklyWindow'][]>(user.calendar.windows)),
+  ),
+
+  http.get(
     url('/me/availability'),
     authed((user, { request }) => {
       const r = range(request);

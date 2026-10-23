@@ -2,7 +2,13 @@ node_modules/
 dist/
 .env
 .env.local
+.env.cloud
+.vercel
 coverage/
 *.log
 .DS_Store
 .agent-role
+
+.vercel
+.env*
+api/index.js

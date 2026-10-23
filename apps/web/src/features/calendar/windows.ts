@@ -1,4 +1,5 @@
 import type { Schemas } from '@sgm/contracts';
+import { apiFetch } from '../../api/client';
 
 export type WeeklyWindow = Schemas['WeeklyWindow'];
 
@@ -13,7 +14,8 @@ export const WEEKDAYS = [
 ] as const;
 
 /** The server default when a user never saved windows (ARCHITECTURE §4.1). */
-export const defaultWindows = (): WeeklyWindow[] => [1, 2, 3, 4, 5].map((weekday) => ({ weekday, startTime: '08:00', endTime: '20:00' }));
+export const DEFAULT_WINDOWS: WeeklyWindow[] = [1, 2, 3, 4, 5].map((weekday) => ({ weekday, startTime: '08:00', endTime: '20:00' }));
+export const defaultWindows = (): WeeklyWindow[] => DEFAULT_WINDOWS;
 
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 
@@ -51,4 +53,23 @@ export function writeCachedWindows(userId: string, windows: WeeklyWindow[]) {
   } catch {
     // storage unavailable: the editor falls back to the default next time
   }
+}
+
+export const availabilityWindowsKey = ['me', 'availability', 'windows'] as const;
+
+/**
+ * Fetch weekly availability windows from GET /me/availability/windows
+ * with fallback to readCachedWindows(userId) / DEFAULT_WINDOWS, and cache the server response to localStorage.
+ */
+export async function fetchAvailabilityWindows(userId?: string): Promise<WeeklyWindow[]> {
+  try {
+    const data = await apiFetch<WeeklyWindow[]>('/me/availability/windows');
+    if (Array.isArray(data)) {
+      if (userId) writeCachedWindows(userId, data);
+      return data;
+    }
+  } catch {
+    // fallback to cache or defaults
+  }
+  return (userId ? readCachedWindows(userId) : null) ?? DEFAULT_WINDOWS;
 }

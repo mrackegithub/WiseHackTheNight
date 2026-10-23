@@ -11,7 +11,8 @@ import './index.css';
 async function enableMocks() {
   // import.meta.env.DEV is inlined by Vite, so production builds drop the mocks entirely.
   if (!import.meta.env.DEV || !config.useMocks) {
-    if (tokenStore.get()?.accessToken.startsWith('mock-')) {
+    const hasMockToken = tokenStore.get()?.accessToken?.startsWith('mock-') ?? false;
+    if (hasMockToken) {
       tokenStore.clear();
     }
     if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {

@@ -5,7 +5,7 @@ export default fp(
   async (app) => {
     const origin = process.env.CORS_ORIGIN ?? 'http://localhost:5173';
     await app.register(cors, {
-      origin: origin === '*' ? true : origin.split(',').map((o) => o.trim()),
+      origin: origin === '*' ? true : origin.split(',').map((o) => o.trim().replace(/\/$/, '')),
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
       allowedHeaders: ['Content-Type', 'Authorization'],

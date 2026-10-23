@@ -20,14 +20,22 @@ export async function listSubjects(prisma: PrismaClient, query: ListSubjectsQuer
     ];
   }
 
-  const items = await prisma.subject.findMany({
-    where,
-    take: limit + 1,
-    cursor: cursor ? { id: cursor } : undefined,
-    skip: cursor ? 1 : 0,
-    orderBy: { id: 'asc' },
-    select: { id: true, code: true, name: true, credits: true },
-  });
+  let items;
+  try {
+    items = await prisma.subject.findMany({
+      where,
+      take: limit + 1,
+      cursor: cursor ? { id: cursor } : undefined,
+      skip: cursor ? 1 : 0,
+      orderBy: { id: 'asc' },
+      select: { id: true, code: true, name: true, credits: true },
+    });
+  } catch (err: unknown) {
+    if ((err as { code?: string })?.code === 'P2025') {
+      return { items: [], nextCursor: null };
+    }
+    throw err;
+  }
 
   let nextCursor: string | null = null;
   if (items.length > limit) {
