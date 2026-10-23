@@ -39,6 +39,7 @@ model User {
   homeLabel          String?
   onboardingComplete Boolean   @default(false)
   isSeed             Boolean   @default(false) // seeded fake users, safe to wipe
+  customWindows      Boolean   @default(false)
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 

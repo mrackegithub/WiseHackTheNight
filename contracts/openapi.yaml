@@ -736,7 +736,7 @@ paths:
       tags: [groups]
       operationId: createGroupSession
       x-owner: backend
-      description: Schedules a session. If `bookingId` is given it must belong to this group.
+      description: Schedules a session. If `bookingId` is given it must belong to this group. If `roomId` is given without `bookingId`, creates the booking and session atomically.
       requestBody:
         required: true
         content:
@@ -1245,6 +1245,14 @@ components:
           properties:
             availableMemberIds: { type: array, items: { type: string, format: uuid } }
             score: { type: number }
+    SessionRoom:
+      type: object
+      required: [id, name]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        locationName: { type: [string, "null"] }
+        status: { type: string, enum: [PENDING, CONFIRMED, CANCELLED, FAILED] }
     StudySession:
       type: object
       required: [id, groupId, start, end, status]
@@ -1257,6 +1265,7 @@ components:
         onlineUrl: { type: [string, "null"], format: uri }
         bookingId: { type: [string, "null"], format: uuid }
         status: { type: string, enum: [PLANNED, CANCELLED, DONE] }
+        room: { oneOf: [{ $ref: "#/components/schemas/SessionRoom" }, { type: "null" }] }
     CreateSessionRequest:
       type: object
       required: [start, end]
@@ -1266,6 +1275,7 @@ components:
         locationId: { type: string, format: uuid }
         onlineUrl: { type: string, format: uri }
         bookingId: { type: string, format: uuid }
+        roomId: { type: string, format: uuid }
 
     # rooms
     Room:

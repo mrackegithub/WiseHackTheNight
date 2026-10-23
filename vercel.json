@@ -3,6 +3,12 @@
   "installCommand": "pnpm -r install",
   "buildCommand": "pnpm run vercel-build",
   "outputDirectory": "apps/web/dist",
+  "crons": [
+    {
+      "path": "/api/v1/integrations/neptun/cron-sync",
+      "schedule": "0 4 * * *"
+    }
+  ],
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api/index" },
     { "source": "/((?!api/).*)", "destination": "/index.html" }

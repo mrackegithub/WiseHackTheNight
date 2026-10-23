@@ -1,31 +1,8 @@
 import type { DateTime } from 'luxon';
 import type { Schemas } from '@sgm/contracts';
-import { formatTimeRange, inZone, nowInZone } from '../../lib/time';
+import { formatTimeRange, nowInZone } from '../../lib/time';
 import { eventStyle } from './event-style';
-
-const START_HOUR = 7;
-const END_HOUR = 21;
-const HOUR_PX = 44;
-const HEIGHT = (END_HOUR - START_HOUR) * HOUR_PX;
-
-interface Block {
-  key: string;
-  top: number;
-  height: number;
-  start: string;
-  end: string;
-}
-
-/** Clips [start, end) to the visible hours of `day` and converts to pixel offsets. */
-function place(day: DateTime, start: string, end: string, key: string): Block | null {
-  const visibleStart = day.set({ hour: START_HOUR });
-  const visibleEnd = day.set({ hour: END_HOUR });
-  const s = inZone(start) < visibleStart ? visibleStart : inZone(start);
-  const e = inZone(end) > visibleEnd ? visibleEnd : inZone(end);
-  if (e <= s) return null;
-  const minutesFromTop = s.diff(visibleStart, 'minutes').minutes;
-  return { key, top: (minutesFromTop / 60) * HOUR_PX, height: (e.diff(s, 'minutes').minutes / 60) * HOUR_PX, start, end };
-}
+import { computeVisibleRange, HOUR_PX, place, type Block } from './visible-range';
 
 interface WeekViewProps {
   weekStart: DateTime;
@@ -38,7 +15,9 @@ interface WeekViewProps {
 export function WeekView({ weekStart, events, freeSlots, onSelectEvent }: WeekViewProps) {
   const days = Array.from({ length: 7 }, (_, i) => weekStart.plus({ days: i }));
   const today = nowInZone().startOf('day');
-  const hours = Array.from({ length: END_HOUR - START_HOUR }, (_, i) => START_HOUR + i);
+  const { startHour, endHour } = computeVisibleRange(events, days);
+  const hours = Array.from({ length: endHour - startHour }, (_, i) => startHour + i);
+  const height = (endHour - startHour) * HOUR_PX;
 
   return (
     <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
@@ -52,17 +31,17 @@ export function WeekView({ weekStart, events, freeSlots, onSelectEvent }: WeekVi
           ))}
         </div>
         <div className="grid grid-cols-[3rem_repeat(7,1fr)]">
-          <div className="relative" style={{ height: HEIGHT }} aria-hidden>
+          <div className="relative" style={{ height }} aria-hidden>
             {hours.map((h) => (
-              <span key={h} className="absolute right-1 -translate-y-1/2 text-[10px] text-slate-500" style={{ top: (h - START_HOUR) * HOUR_PX }}>
+              <span key={h} className="absolute right-1 -translate-y-1/2 text-[10px] text-slate-500" style={{ top: (h - startHour) * HOUR_PX }}>
                 {String(h).padStart(2, '0')}:00
               </span>
             ))}
           </div>
           {days.map((day) => {
-            const slotBlocks = freeSlots.map((s, i) => place(day, s.start, s.end, `slot-${i}`)).filter((b): b is Block => b !== null);
+            const slotBlocks = freeSlots.map((s, i) => place(day, s.start, s.end, `slot-${i}-${day.toISODate()}`, startHour, endHour)).filter((b): b is Block => b !== null);
             const eventBlocks = events
-              .map((ev) => ({ ev, block: place(day, ev.start, ev.end, ev.id) }))
+              .map((ev) => ({ ev, block: place(day, ev.start, ev.end, `${ev.id}-${day.toISODate()}`, startHour, endHour) }))
               .filter((x): x is { ev: Schemas['CalendarEvent']; block: Block } => x.block !== null);
             return (
               <section
@@ -70,7 +49,7 @@ export function WeekView({ weekStart, events, freeSlots, onSelectEvent }: WeekVi
                 aria-label={day.toFormat('cccc d LLLL')}
                 className="relative border-l border-slate-100"
                 style={{
-                  height: HEIGHT,
+                  height,
                   backgroundImage: `repeating-linear-gradient(to bottom, transparent 0, transparent ${HOUR_PX - 1}px, rgb(241 245 249) ${HOUR_PX - 1}px, rgb(241 245 249) ${HOUR_PX}px)`,
                 }}
               >

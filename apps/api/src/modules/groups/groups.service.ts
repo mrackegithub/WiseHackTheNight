@@ -1,7 +1,8 @@
 import { randomBytes } from 'node:crypto';
 import type { PrismaClient, RoleTag } from '@prisma/client';
 import { conflict, forbidden, HttpError, notFound } from '../../core/errors.js';
-import { AvailabilityServiceImpl, DateTime, intersectMultipleSlots, subtractSlots, type AvailabilityDb } from '@sgm/integrations';
+import { DateTime, intersectMultipleSlots, subtractSlots } from '@sgm/integrations';
+import { getAvailabilityService } from '../integrations/neptun/availability.service.js';
 import type { CreateGroupInput, SuggestedSlotsQuery } from './groups.schemas.js';
 
 export async function listMyGroups(prisma: PrismaClient, userId: string) {
@@ -465,7 +466,7 @@ export async function getGroupSuggestedSlots(
   // study sessions) via AvailabilityService (≤ 2 queries), minus planned sessions of their groups in case
   // a session wasn't mirrored into the calendar (e.g. seeded ones).
   const [freeByUser, sessions] = await Promise.all([
-    new AvailabilityServiceImpl(prisma as unknown as AvailabilityDb).getFreeSlotsBulk(memberIds, { start: from, end: to }, minMinutes),
+    getAvailabilityService(prisma).getFreeSlotsBulk(memberIds, { start: from, end: to }, minMinutes),
     prisma.studySession.findMany({
       where: {
         status: 'PLANNED',

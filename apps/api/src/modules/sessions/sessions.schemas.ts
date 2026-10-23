@@ -19,6 +19,7 @@ export const createSessionSchema = z.object({
   locationId: z.string().uuid().optional(),
   onlineUrl: z.string().url().optional(),
   bookingId: z.string().uuid().optional(),
+  roomId: z.string().uuid().optional(),
 });
 
 export type GroupIdParams = z.infer<typeof groupIdParamsSchema>;

@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "customWindows" BOOLEAN NOT NULL DEFAULT false;

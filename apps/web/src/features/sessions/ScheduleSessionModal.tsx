@@ -22,16 +22,6 @@ type Step = 'when' | 'where' | 'room' | 'confirm';
 
 const stepLabels: Record<Step, string> = { when: 'When', where: 'Where', room: 'Room', confirm: 'Confirm' };
 
-/** Which call failed, so the dialog can send the user back to the right step. */
-class ScheduleError extends Error {
-  constructor(
-    readonly phase: 'booking' | 'session',
-    readonly cause: unknown,
-  ) {
-    super(cause instanceof Error ? cause.message : 'Scheduling failed');
-  }
-}
-
 interface Props {
   group: Schemas['Group'];
   slot: Schemas['SuggestedSlot'];
@@ -59,34 +49,21 @@ export function ScheduleSessionModal({ group, slot, onClose }: Props) {
   const bookable = place.kind === 'location' && place.location.bookable;
   const steps: Step[] = bookable ? ['when', 'where', 'room', 'confirm'] : ['when', 'where', 'confirm'];
 
-  /** Books the room (if any), then creates the session; cancels the booking again if the session fails. */
+  /** Creates the session (and books the room atomically if selected). */
   const schedule = useMutation({
     mutationFn: async () => {
-      let booking: Schemas['Booking'] | null = null;
-      if (room) {
-        try {
-          booking = await unwrap(api.POST('/bookings', { body: { roomId: room.id, groupId: group.id, start, end } }));
-        } catch (err) {
-          throw new ScheduleError('booking', err);
-        }
-      }
-      try {
-        return await unwrap(
-          api.POST('/groups/{groupId}/sessions', {
-            params: { path: { groupId: group.id } },
-            body: {
-              start,
-              end,
-              ...(place.kind === 'location' ? { locationId: place.location.id } : {}),
-              ...(place.kind === 'online' ? { onlineUrl: onlineUrl.trim() } : {}),
-              ...(booking ? { bookingId: booking.id } : {}),
-            },
-          }),
-        );
-      } catch (err) {
-        if (booking) await api.DELETE('/bookings/{bookingId}', { params: { path: { bookingId: booking.id } } }).catch(() => undefined);
-        throw new ScheduleError('session', err);
-      }
+      return await unwrap(
+        api.POST('/groups/{groupId}/sessions', {
+          params: { path: { groupId: group.id } },
+          body: {
+            start,
+            end,
+            ...(place.kind === 'location' ? { locationId: place.location.id } : {}),
+            ...(place.kind === 'online' ? { onlineUrl: onlineUrl.trim() } : {}),
+            ...(room ? { roomId: room.id } : {}),
+          },
+        }),
+      );
     },
     meta: { silent: true },
     onSuccess: () => {
@@ -96,15 +73,14 @@ export function ScheduleSessionModal({ group, slot, onClose }: Props) {
       onClose();
     },
     onError: (err) => {
-      const { phase, cause } = err as ScheduleError;
-      if (phase === 'booking') {
+      if (err instanceof ApiError && err.code === 'SLOT_TAKEN') {
         // e.g. SLOT_TAKEN: someone else just booked it; show fresh rooms
         void queryClient.invalidateQueries({ queryKey: ['rooms'] });
         setRoom(null);
         setStep('room');
-        setError(messageForError(cause));
+        setError(messageForError(err));
       } else {
-        setError(cause instanceof ApiError && cause.status === 409 ? 'Someone in the group is busy at that time. Pick another time.' : messageForError(cause));
+        setError(err instanceof ApiError && err.status === 409 ? 'Someone in the group is busy at that time. Pick another time.' : messageForError(err));
       }
     },
   });

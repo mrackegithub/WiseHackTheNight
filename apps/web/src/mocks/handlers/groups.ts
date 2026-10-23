@@ -2,6 +2,7 @@ import { DateTime } from 'luxon';
 import { http, HttpResponse } from 'msw';
 import type { Schemas } from '@sgm/contracts';
 import { locationById } from '../data/locations';
+import { ALWAYS_TAKEN, roomById } from '../data/rooms';
 import { db, nextId, type MockUser } from '../db';
 import { busyMember } from '../sessions';
 import { suggestedLocations } from '../group-locations';
@@ -9,6 +10,10 @@ import { suggestedSlots } from '../group-slots';
 import { subjectById } from '../data/subjects';
 import { isMember, publicUser, toGroup, toGroupSummary, type MockGroup } from '../groups';
 import { apiError, authed, url } from '../utils';
+
+const activeBooking = (b: Schemas['Booking']) => b.status === 'CONFIRMED' || b.status === 'PENDING';
+const overlapsBooking = (b: { start: string; end: string }, start: string, end: string) => Date.parse(b.start) < Date.parse(end) && Date.parse(b.end) > Date.parse(start);
+const isRoomFree = (roomId: string, start: string, end: string) => ![...db.bookings.values()].some((b) => b.room.id === roomId && activeBooking(b) && overlapsBooking(b, start, end));
 
 /** Members see any of their groups; others only open ones (as in the candidate deck). */
 function visibleGroup(user: MockUser, groupId: unknown) {
@@ -103,7 +108,24 @@ export const groupHandlers = [
     authed((user, { params }) => {
       const group = visibleGroup(user, params.groupId);
       if (!group) return notFound();
-      return HttpResponse.json<Schemas['StudySession'][]>([...group.sessions].sort((a, b) => a.start.localeCompare(b.start)));
+      const sessions = group.sessions.map((s) => {
+        if (!s.room && s.bookingId) {
+          const booking = db.bookings.get(s.bookingId);
+          if (booking) {
+            return {
+              ...s,
+              room: {
+                id: booking.room.id,
+                name: booking.room.name,
+                locationName: locationById(booking.room.locationId)?.name ?? null,
+                status: booking.status,
+              },
+            };
+          }
+        }
+        return s;
+      });
+      return HttpResponse.json<Schemas['StudySession'][]>([...sessions].sort((a, b) => a.start.localeCompare(b.start)));
     }),
   ),
 
@@ -120,24 +142,61 @@ export const groupHandlers = [
       if (body.onlineUrl && !/^https?:\/\/\S+$/.test(body.onlineUrl)) return apiError(422, 'VALIDATION_FAILED', 'Invalid link', [{ path: 'onlineUrl', issue: 'must be a URL' }]);
       const location = body.locationId ? locationById(body.locationId) : null;
       if (body.locationId && !location) return apiError(422, 'VALIDATION_FAILED', 'Unknown location', [{ path: 'locationId', issue: 'unknown location' }]);
-      // "If bookingId is given it must belong to this group" (contract)
-      const booking = body.bookingId ? db.bookings.get(body.bookingId) : null;
-      if (body.bookingId && (!booking || booking.groupId !== group.id || booking.status === 'CANCELLED')) {
-        return apiError(422, 'VALIDATION_FAILED', 'Invalid booking', [{ path: 'bookingId', issue: 'must be an active booking of this group' }]);
+
+      let booking: Schemas['Booking'] | null = null;
+      let createdBooking = false;
+      if (body.roomId && !body.bookingId) {
+        const room = roomById(body.roomId);
+        if (!room) return apiError(404, 'NOT_FOUND', 'Room not found');
+        if (room.name === ALWAYS_TAKEN || !isRoomFree(room.id, body.start, body.end)) {
+          return apiError(409, 'SLOT_TAKEN', 'Room already booked for that time');
+        }
+        booking = {
+          id: nextId(),
+          room,
+          groupId: group.id,
+          start: body.start,
+          end: body.end,
+          status: 'CONFIRMED',
+          externalRef: `MOCK-${db.bookings.size + 1}`,
+        };
+        db.bookings.set(booking.id, booking);
+        createdBooking = true;
+      } else if (body.bookingId) {
+        booking = db.bookings.get(body.bookingId) ?? null;
+        if (!booking || booking.groupId !== group.id || booking.status === 'CANCELLED') {
+          return apiError(422, 'VALIDATION_FAILED', 'Invalid booking', [{ path: 'bookingId', issue: 'must be an active booking of this group' }]);
+        }
       }
 
       const busy = busyMember(group, body.start, body.end);
-      if (busy) return apiError(409, 'CONFLICT', `${busy} is busy at that time`);
+      if (busy) {
+        if (createdBooking && booking) {
+          db.bookings.delete(booking.id);
+        }
+        return apiError(409, 'CONFLICT', `${busy} is busy at that time`);
+      }
+
+      const loc = location ?? (booking ? locationById(booking.room.locationId) : null);
+      const roomSummary = booking
+        ? {
+            id: booking.room.id,
+            name: booking.room.name,
+            locationName: locationById(booking.room.locationId)?.name ?? null,
+            status: booking.status,
+          }
+        : null;
 
       const session: Schemas['StudySession'] = {
         id: nextId(),
         groupId: group.id,
         start: new Date(start).toISOString().replace('.000', ''),
         end: new Date(end).toISOString().replace('.000', ''),
-        location: location ?? null,
+        location: loc ?? null,
         onlineUrl: body.onlineUrl ?? null,
-        bookingId: body.bookingId ?? null,
+        bookingId: booking ? booking.id : null,
         status: 'PLANNED',
+        room: roomSummary,
       };
       group.sessions.push(session);
       return HttpResponse.json<Schemas['StudySession']>(session, { status: 201 });

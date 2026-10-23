@@ -1,6 +1,6 @@
 import type { PrismaClient } from '@prisma/client';
 import { conflict, forbidden, notFound, validationError } from '../../core/errors.js';
-import { cancelBooking } from '../integrations/rooms/rooms.service.js';
+import { cancelBooking, createBooking } from '../integrations/rooms/rooms.service.js';
 import type { CreateSessionInput } from './sessions.schemas.js';
 
 /** Cancels a session for the whole group: frees every member's calendar and releases its room booking. */
@@ -28,6 +28,15 @@ export async function listGroupSessions(prisma: PrismaClient, groupId: string) {
           rooms: { select: { id: true } },
         },
       },
+      booking: {
+        include: {
+          room: {
+            include: {
+              location: true,
+            },
+          },
+        },
+      },
     },
     orderBy: { start: 'asc' },
   });
@@ -52,6 +61,14 @@ export async function listGroupSessions(prisma: PrismaClient, groupId: string) {
     onlineUrl: s.onlineUrl,
     bookingId: s.bookingId,
     status: s.status,
+    room: s.booking?.room
+      ? {
+          id: s.booking.room.id,
+          name: s.booking.room.name,
+          locationName: s.booking.room.location?.name ?? null,
+          status: s.booking.status,
+        }
+      : null,
   }));
 }
 
@@ -82,136 +99,178 @@ export async function createGroupSession(
     throw validationError('Start time must be before end time', [{ path: 'end', issue: 'must be after start' }]);
   }
 
-  if (data.bookingId) {
-    const booking = await prisma.booking.findUnique({
-      where: { id: data.bookingId },
-      include: { room: true },
+  let createdBookingId: string | undefined;
+  let bookingId = data.bookingId;
+  let locationId = data.locationId;
+
+  if (data.roomId && !bookingId) {
+    const booking = await createBooking(prisma, userId, {
+      roomId: data.roomId,
+      groupId,
+      start: data.start,
+      end: data.end,
     });
-    if (!booking) {
-      throw notFound('Booking not found', 'NOT_FOUND');
-    }
-    if (booking.groupId !== groupId) {
-      throw validationError('Booking does not belong to this group', [{ path: 'bookingId', issue: 'must be a booking of this group' }]);
-    }
-    if (booking.status !== 'CONFIRMED' && booking.status !== 'PENDING') {
-      throw validationError('Booking is not confirmed or pending', [{ path: 'bookingId', issue: 'must be CONFIRMED or PENDING' }]);
-    }
-    if (booking.start.getTime() !== start.getTime() || booking.end.getTime() !== end.getTime()) {
-      throw validationError('Booking times do not match session times', [{ path: 'bookingId', issue: 'must match booking start and end' }]);
-    }
-    if (!data.locationId && booking.room?.locationId) {
-      data.locationId = booking.room.locationId;
+    createdBookingId = booking.id;
+    bookingId = booking.id;
+    if (!locationId && booking.room?.locationId) {
+      locationId = booking.room.locationId;
     }
   }
 
-  if (data.locationId) {
-    const loc = await prisma.location.findUnique({
-      where: { id: data.locationId },
-    });
-    if (!loc) {
-      throw notFound('Location not found', 'NOT_FOUND');
+  try {
+    if (bookingId && !createdBookingId) {
+      const booking = await prisma.booking.findUnique({
+        where: { id: bookingId },
+        include: { room: true },
+      });
+      if (!booking) {
+        throw notFound('Booking not found', 'NOT_FOUND');
+      }
+      if (booking.groupId !== groupId) {
+        throw validationError('Booking does not belong to this group', [{ path: 'bookingId', issue: 'must be a booking of this group' }]);
+      }
+      if (booking.status !== 'CONFIRMED' && booking.status !== 'PENDING') {
+        throw validationError('Booking is not confirmed or pending', [{ path: 'bookingId', issue: 'must be CONFIRMED or PENDING' }]);
+      }
+      if (booking.start.getTime() !== start.getTime() || booking.end.getTime() !== end.getTime()) {
+        throw validationError('Booking times do not match session times', [{ path: 'bookingId', issue: 'must match booking start and end' }]);
+      }
+      if (!locationId && booking.room?.locationId) {
+        locationId = booking.room.locationId;
+      }
     }
-  }
 
-  const memberIds = group.members.map((m) => m.userId);
+    if (locationId) {
+      const loc = await prisma.location.findUnique({
+        where: { id: locationId },
+      });
+      if (!loc) {
+        throw notFound('Location not found', 'NOT_FOUND');
+      }
+    }
 
-  // Member conflict check (409)
-  const conflictingSession = await prisma.studySession.findFirst({
-    where: {
-      status: { in: ['PLANNED', 'DONE'] },
-      group: {
-        members: {
-          some: { userId: { in: memberIds } },
-        },
-      },
-      start: { lt: end },
-      end: { gt: start },
-    },
-  });
-  if (conflictingSession) {
-    throw conflict('A member is busy in that slot', 'MEMBER_BUSY');
-  }
+    const memberIds = group.members.map((m) => m.userId);
 
-  const conflictingCalendarEvent = await prisma.calendarEvent.findFirst({
-    where: {
-      userId: { in: memberIds },
-      start: { lt: end },
-      end: { gt: start },
-    },
-  });
-  if (conflictingCalendarEvent) {
-    throw conflict('A member is busy in that slot', 'MEMBER_BUSY');
-  }
-
-  const session = await prisma.$transaction(async (tx) => {
-    const created = await tx.studySession.create({
-      data: {
-        groupId,
-        start,
-        end,
-        locationId: data.locationId ?? null,
-        onlineUrl: data.onlineUrl ?? null,
-        bookingId: data.bookingId ?? null,
-        status: 'PLANNED',
-      },
-      include: {
-        location: {
-          include: {
-            rooms: { select: { id: true } },
+    // Member conflict check (409)
+    const conflictingSession = await prisma.studySession.findFirst({
+      where: {
+        status: { in: ['PLANNED', 'DONE'] },
+        group: {
+          members: {
+            some: { userId: { in: memberIds } },
           },
         },
+        start: { lt: end },
+        end: { gt: start },
       },
     });
+    if (conflictingSession) {
+      throw conflict('A member is busy in that slot', 'MEMBER_BUSY');
+    }
 
-    for (const mId of memberIds) {
-      await tx.calendarEvent.upsert({
-        where: {
-          userId_source_externalUid: {
+    const conflictingCalendarEvent = await prisma.calendarEvent.findFirst({
+      where: {
+        userId: { in: memberIds },
+        start: { lt: end },
+        end: { gt: start },
+      },
+    });
+    if (conflictingCalendarEvent) {
+      throw conflict('A member is busy in that slot', 'MEMBER_BUSY');
+    }
+
+    const session = await prisma.$transaction(async (tx) => {
+      const created = await tx.studySession.create({
+        data: {
+          groupId,
+          start,
+          end,
+          locationId: locationId ?? null,
+          onlineUrl: data.onlineUrl ?? null,
+          bookingId: bookingId ?? null,
+          status: 'PLANNED',
+        },
+        include: {
+          location: {
+            include: {
+              rooms: { select: { id: true } },
+            },
+          },
+          booking: {
+            include: {
+              room: {
+                include: {
+                  location: true,
+                },
+              },
+            },
+          },
+        },
+      });
+
+      for (const mId of memberIds) {
+        await tx.calendarEvent.upsert({
+          where: {
+            userId_source_externalUid: {
+              userId: mId,
+              source: 'STUDY_SESSION',
+              externalUid: created.id,
+            },
+          },
+          update: {
+            start,
+            end,
+            title: `Study Session: ${group.name}`,
+          },
+          create: {
             userId: mId,
             source: 'STUDY_SESSION',
             externalUid: created.id,
+            title: `Study Session: ${group.name}`,
+            start,
+            end,
           },
-        },
-        update: {
-          start,
-          end,
-          title: `Study Session: ${group.name}`,
-        },
-        create: {
-          userId: mId,
-          source: 'STUDY_SESSION',
-          externalUid: created.id,
-          title: `Study Session: ${group.name}`,
-          start,
-          end,
-        },
-      });
+        });
+      }
+
+      return created;
+    });
+
+    return {
+      id: session.id,
+      groupId: session.groupId,
+      start: session.start.toISOString(),
+      end: session.end.toISOString(),
+      location: session.location
+        ? {
+            id: session.location.id,
+            name: session.location.name,
+            type: session.location.type,
+            address: session.location.address,
+            point: { lat: session.location.lat, lng: session.location.lng },
+            bookable: session.location.rooms.length > 0,
+            openingHours: session.location.openingHours,
+            distanceKm: null,
+          }
+        : null,
+      onlineUrl: session.onlineUrl,
+      bookingId: session.bookingId,
+      status: session.status,
+      room: session.booking?.room
+        ? {
+            id: session.booking.room.id,
+            name: session.booking.room.name,
+            locationName: session.booking.room.location?.name ?? null,
+            status: session.booking.status,
+          }
+        : null,
+    };
+  } catch (err) {
+    if (createdBookingId) {
+      await cancelBooking(prisma, createdBookingId, userId).catch(() => {});
     }
-
-    return created;
-  });
-
-  return {
-    id: session.id,
-    groupId: session.groupId,
-    start: session.start.toISOString(),
-    end: session.end.toISOString(),
-    location: session.location
-      ? {
-          id: session.location.id,
-          name: session.location.name,
-          type: session.location.type,
-          address: session.location.address,
-          point: { lat: session.location.lat, lng: session.location.lng },
-          bookable: session.location.rooms.length > 0,
-          openingHours: session.location.openingHours,
-          distanceKm: null,
-        }
-      : null,
-    onlineUrl: session.onlineUrl,
-    bookingId: session.bookingId,
-    status: session.status,
-  };
+    throw err;
+  }
 }
 
 export async function cancelGroupSession(

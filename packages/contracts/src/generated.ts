@@ -511,7 +511,7 @@ export interface paths {
         };
         get: operations["listGroupSessions"];
         put?: never;
-        /** @description Schedules a session. If `bookingId` is given it must belong to this group. */
+        /** @description Schedules a session. If `bookingId` is given it must belong to this group. If `roomId` is given without `bookingId`, creates the booking and session atomically. */
         post: operations["createGroupSession"];
         delete?: never;
         options?: never;
@@ -943,6 +943,14 @@ export interface components {
             availableMemberIds: string[];
             score: number;
         };
+        SessionRoom: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            locationName?: string | null;
+            /** @enum {string} */
+            status?: "PENDING" | "CONFIRMED" | "CANCELLED" | "FAILED";
+        };
         StudySession: {
             /** Format: uuid */
             id: string;
@@ -959,6 +967,7 @@ export interface components {
             bookingId?: string | null;
             /** @enum {string} */
             status: "PLANNED" | "CANCELLED" | "DONE";
+            room?: components["schemas"]["SessionRoom"] | null;
         };
         CreateSessionRequest: {
             /** Format: date-time */
@@ -971,6 +980,8 @@ export interface components {
             onlineUrl?: string;
             /** Format: uuid */
             bookingId?: string;
+            /** Format: uuid */
+            roomId?: string;
         };
         Room: {
             /** Format: uuid */

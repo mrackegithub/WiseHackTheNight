@@ -1,5 +1,6 @@
 import type { Prisma, PrismaClient, RoleTag, StudyMode } from '@prisma/client';
-import { AvailabilityServiceImpl, intersectMultipleSlots, intersectSlots, type AvailabilityDb, type TimeSlot } from '@sgm/integrations';
+import { intersectMultipleSlots, intersectSlots, type TimeSlot } from '@sgm/integrations';
+import { getAvailabilityService } from '../integrations/neptun/availability.service.js';
 import { conflict, notFound, validationError } from '../../core/errors.js';
 
 const MATCH_HORIZON_DAYS = 14;
@@ -8,7 +9,7 @@ const MATCH_HORIZON_DAYS = 14;
 async function freeSlotsFor(prisma: PrismaClient, userIds: string[]): Promise<Map<string, TimeSlot[]>> {
   const start = new Date();
   const end = new Date(start.getTime() + MATCH_HORIZON_DAYS * 24 * 60 * 60 * 1000);
-  return new AvailabilityServiceImpl(prisma as unknown as AvailabilityDb).getFreeSlotsBulk([...new Set(userIds)], { start, end }, 30);
+  return getAvailabilityService(prisma).getFreeSlotsBulk([...new Set(userIds)], { start, end }, 30);
 }
 import type {
   GetCandidatesQuery,

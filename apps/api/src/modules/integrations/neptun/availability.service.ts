@@ -3,9 +3,12 @@ import {
   AvailabilityServiceImpl,
   DateTime,
   DEFAULT_WEEKLY_WINDOWS,
+  expandWeeklyWindows,
+  subtractSlots,
   type AvailabilityDb,
   type AvailabilityService,
   type TimeSlot,
+  type WeeklyWindow,
 } from '@sgm/integrations';
 import type { paths } from '@sgm/contracts';
 import { notFound } from '../../../core/errors.js';
@@ -19,8 +22,133 @@ export type TimeSlotResponse =
 export type WeeklyWindowResponse =
   paths['/me/availability']['put']['responses'][200]['content']['application/json'][number];
 
+export class AppAvailabilityService implements AvailabilityService {
+  private baseService: AvailabilityServiceImpl;
+
+  constructor(private prisma: PrismaClient) {
+    this.baseService = new AvailabilityServiceImpl(prisma as unknown as AvailabilityDb);
+  }
+
+  async getFreeSlots(userId: string, range: TimeSlot, minMinutes = 30): Promise<TimeSlot[]> {
+    const [windows, user, busyEvents] = await Promise.all([
+      this.prisma.availabilityWindow.findMany({
+        where: { userId },
+      }),
+      this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { customWindows: true },
+      }),
+      this.prisma.calendarEvent.findMany({
+        where: {
+          userId,
+          start: { lt: range.end },
+          end: { gt: range.start },
+        },
+      }),
+    ]);
+
+    let activeWindows: WeeklyWindow[];
+    if (windows.length > 0) {
+      activeWindows = windows;
+    } else if (user?.customWindows) {
+      return [];
+    } else {
+      activeWindows = DEFAULT_WEEKLY_WINDOWS;
+    }
+
+    const expandedWindows = expandWeeklyWindows(activeWindows, range);
+    const busySlots: TimeSlot[] = busyEvents.map((e) => ({
+      start: new Date(e.start),
+      end: new Date(e.end),
+    }));
+
+    return subtractSlots(expandedWindows, busySlots, minMinutes);
+  }
+
+  async getFreeSlotsBulk(
+    userIds: string[],
+    range: TimeSlot,
+    minMinutes = 30,
+  ): Promise<Map<string, TimeSlot[]>> {
+    const result = new Map<string, TimeSlot[]>();
+    if (userIds.length === 0) return result;
+
+    const [allWindows, allBusy, users] = await Promise.all([
+      this.prisma.availabilityWindow.findMany({
+        where: { userId: { in: userIds } },
+      }),
+      this.prisma.calendarEvent.findMany({
+        where: {
+          userId: { in: userIds },
+          start: { lt: range.end },
+          end: { gt: range.start },
+        },
+      }),
+      this.prisma.user.findMany({
+        where: { id: { in: userIds } },
+        select: { id: true, customWindows: true },
+      }),
+    ]);
+
+    const customWindowsByUser = new Map<string, boolean>();
+    for (const u of users) {
+      customWindowsByUser.set(u.id, u.customWindows);
+    }
+
+    const windowsByUser = new Map<string, WeeklyWindow[]>();
+    for (const w of allWindows) {
+      const list = windowsByUser.get(w.userId) ?? [];
+      list.push(w);
+      windowsByUser.set(w.userId, list);
+    }
+
+    const busyByUser = new Map<string, TimeSlot[]>();
+    for (const b of allBusy) {
+      const list = busyByUser.get(b.userId) ?? [];
+      list.push({ start: new Date(b.start), end: new Date(b.end) });
+      busyByUser.set(b.userId, list);
+    }
+
+    const expandedByWindows = new Map<string, TimeSlot[]>();
+    for (const userId of userIds) {
+      const userWindows = windowsByUser.get(userId);
+      const isCustom = customWindowsByUser.get(userId) ?? false;
+
+      let activeWindows: WeeklyWindow[];
+      if (userWindows && userWindows.length > 0) {
+        activeWindows = userWindows;
+      } else if (isCustom) {
+        result.set(userId, []);
+        continue;
+      } else {
+        activeWindows = DEFAULT_WEEKLY_WINDOWS;
+      }
+
+      const userBusy = busyByUser.get(userId) ?? [];
+      const key = activeWindows.map((w) => `${w.weekday} ${w.startTime}-${w.endTime}`).sort().join(',');
+      let expanded = expandedByWindows.get(key);
+      if (!expanded) {
+        expanded = expandWeeklyWindows(activeWindows, range);
+        expandedByWindows.set(key, expanded);
+      }
+      const free = subtractSlots(expanded, userBusy, minMinutes);
+      result.set(userId, free);
+    }
+
+    return result;
+  }
+
+  async upsertStudySessionBlock(
+    sessionId: string,
+    memberIds: string[],
+    slot: TimeSlot | null,
+  ): Promise<void> {
+    return this.baseService.upsertStudySessionBlock(sessionId, memberIds, slot);
+  }
+}
+
 export function getAvailabilityService(prisma: PrismaClient): AvailabilityService {
-  return new AvailabilityServiceImpl(prisma as unknown as AvailabilityDb);
+  return new AppAvailabilityService(prisma);
 }
 
 export async function getMySchedule(
@@ -132,12 +260,18 @@ export async function getMyAvailabilityWindows(
   prisma: PrismaClient,
   userId: string,
 ): Promise<WeeklyWindowResponse[]> {
-  const windows = await prisma.availabilityWindow.findMany({
-    where: { userId },
-    orderBy: [{ weekday: 'asc' }, { startTime: 'asc' }],
-  });
+  const [windows, user] = await Promise.all([
+    prisma.availabilityWindow.findMany({
+      where: { userId },
+      orderBy: [{ weekday: 'asc' }, { startTime: 'asc' }],
+    }),
+    prisma.user.findUnique({
+      where: { id: userId },
+      select: { customWindows: true },
+    }),
+  ]);
 
-  if (windows.length === 0) {
+  if (windows.length === 0 && !user?.customWindows) {
     return DEFAULT_WEEKLY_WINDOWS.map((w) => ({
       weekday: w.weekday,
       startTime: w.startTime,
@@ -158,6 +292,11 @@ export async function replaceMyAvailabilityWindows(
   windows: WeeklyWindowInput[],
 ): Promise<WeeklyWindowResponse[]> {
   await prisma.$transaction(async (tx) => {
+    await tx.user.update({
+      where: { id: userId },
+      data: { customWindows: true },
+    });
+
     await tx.availabilityWindow.deleteMany({
       where: { userId },
     });

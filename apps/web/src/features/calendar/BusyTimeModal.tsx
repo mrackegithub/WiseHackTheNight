@@ -47,14 +47,29 @@ export function BusyTimeModal({ defaultDate, onClose }: Props) {
     onError: (err) => setErrors(fieldErrors(err)),
   });
 
+  const startTime = DateTime.fromISO(`${values.date}T${values.start}`, { zone: ZONE });
+  const endTime = DateTime.fromISO(`${values.date}T${values.end}`, { zone: ZONE });
+  const isOvernight = startTime.isValid && endTime.isValid && endTime < startTime;
+
   function submit(e: FormEvent) {
     e.preventDefault();
     const start = DateTime.fromISO(`${values.date}T${values.start}`, { zone: ZONE });
-    const end = DateTime.fromISO(`${values.date}T${values.end}`, { zone: ZONE });
+    let end = DateTime.fromISO(`${values.date}T${values.end}`, { zone: ZONE });
     const next: Record<string, string> = {};
     if (!values.title.trim()) next.title = 'Give it a short name, e.g. "Part-time job".';
-    if (!start.isValid || !end.isValid) next.date = 'Pick a date and times.';
-    else if (end <= start) next.end = 'End must be after start.';
+    if (!start.isValid || !end.isValid) {
+      next.date = 'Pick a date and times.';
+    } else if (end.toMillis() === start.toMillis()) {
+      next.end = 'End must be after start.';
+    } else {
+      if (end < start) {
+        end = end.plus({ days: 1 });
+      }
+      const durationHours = end.diff(start, 'hours').hours;
+      if (durationHours <= 0 || durationHours > 24) {
+        next.end = 'End must be after start.';
+      }
+    }
     setErrors(next);
     if (Object.keys(next).length) return;
     save.mutate({ title: values.title.trim(), start: toApiTime(start), end: toApiTime(end), repeatWeeks: values.repeatWeeks, category });
@@ -90,7 +105,7 @@ export function BusyTimeModal({ defaultDate, onClose }: Props) {
         <div className="grid gap-3 sm:grid-cols-3">
           <TextField label="Date" type="date" value={values.date} min={nowInZone().toISODate()!} onChange={set('date')} error={errors.date ?? errors.start} />
           <TextField label="From" type="time" step={900} value={values.start} onChange={set('start')} />
-          <TextField label="To" type="time" step={900} value={values.end} onChange={set('end')} error={errors.end} />
+          <TextField label="To" type="time" step={900} value={values.end} onChange={set('end')} error={errors.end} hint={isOvernight ? 'Ends next day' : undefined} />
         </div>
         <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
           Repeat

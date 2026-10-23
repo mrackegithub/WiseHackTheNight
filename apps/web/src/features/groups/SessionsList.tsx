@@ -38,11 +38,21 @@ function BookedRoom({ bookingId }: { bookingId: string }) {
 }
 
 function Where({ session: s }: { session: Schemas['StudySession'] }) {
-  if (s.location) {
+  if (s.location || s.room) {
+    const locName = s.location?.name ?? s.room?.locationName ?? '';
+    const roomInfo = s.room ? (
+      <span className={s.room.status === 'CONFIRMED' || !s.room.status ? 'text-emerald-700' : 'text-amber-700'}>
+        {' '}
+        · {s.room.name} {s.room.status ? (bookingLabel[s.room.status] ?? 'booked') : 'booked'}
+      </span>
+    ) : s.bookingId ? (
+      <BookedRoom bookingId={s.bookingId} />
+    ) : null;
+
     return (
       <>
-        {s.location.name}
-        {s.bookingId && <BookedRoom bookingId={s.bookingId} />}
+        {locName}
+        {roomInfo}
       </>
     );
   }

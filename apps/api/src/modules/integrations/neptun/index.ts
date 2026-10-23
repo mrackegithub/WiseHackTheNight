@@ -103,7 +103,15 @@ const neptunRoutes: FastifyPluginAsync = async (app) => {
   );
 
   // GET /integrations/neptun/cron-sync
-  app.get('/integrations/neptun/cron-sync', async (_req, reply) => {
+  app.get('/integrations/neptun/cron-sync', async (req, reply) => {
+    const cronSecret = process.env.CRON_SECRET;
+    if (!cronSecret) {
+      return reply.status(503).send({ message: 'CRON_SECRET is not configured' });
+    }
+    const authHeader = req.headers.authorization;
+    if (authHeader !== `Bearer ${cronSecret}`) {
+      return reply.status(401).send({ message: 'Unauthorized' });
+    }
     await neptunService.runNeptunSyncSweep(app.prisma);
     return reply.status(200).send({ ok: true });
   });
