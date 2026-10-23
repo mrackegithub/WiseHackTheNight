@@ -84,22 +84,33 @@ function scoreUserCandidate(me: MatchSide, myFreeSlots: TimeSlot[], enrollment: 
   const candMaxDistance = candPrefs?.maxDistanceKm ?? 5;
   const candGroupRange: [number, number] = [candPrefs?.groupSizeMin ?? 2, candPrefs?.groupSizeMax ?? 4];
 
+  // Incompatible study modes check:
+  // If one demands IN_PERSON only and the other demands ONLINE only, they cannot study together
+  if (
+    (me.mode === 'IN_PERSON' && candMode === 'ONLINE') ||
+    (me.mode === 'ONLINE' && candMode === 'IN_PERSON')
+  ) {
+    return null;
+  }
+
   const candPoint =
     candidateUser.homeLat !== null && candidateUser.homeLng !== null
       ? { lat: candidateUser.homeLat, lng: candidateUser.homeLng }
       : null;
 
-  const isOnline = me.mode === 'ONLINE' || candMode === 'ONLINE';
+  const bothOnline = me.mode === 'ONLINE' && candMode === 'ONLINE';
 
   let distanceKm: number | null = null;
-  if (me.point && candPoint) {
+  if (!bothOnline && me.point && candPoint) {
     distanceKm = haversineDistance(me.point, candPoint);
   }
 
   const effectiveMaxDistance = Math.min(me.maxDistanceKm, candMaxDistance);
 
-  // Hard filter: distance if both are IN_PERSON only
-  if (!isOnline && me.mode === 'IN_PERSON' && candMode === 'IN_PERSON') {
+  // In-person distance filter:
+  // If both are IN_PERSON, or if one is IN_PERSON and the other is EITHER (meeting is in-person)
+  const mustMeetInPerson = me.mode === 'IN_PERSON' || candMode === 'IN_PERSON';
+  if (mustMeetInPerson) {
     if (distanceKm === null || distanceKm > effectiveMaxDistance) {
       return null;
     }
@@ -123,7 +134,7 @@ function scoreUserCandidate(me: MatchSide, myFreeSlots: TimeSlot[], enrollment: 
     candidateInterests: candInterestSlugs,
     distanceKm,
     maxDistanceKm: effectiveMaxDistance,
-    isOnline,
+    isOnline: bothOnline,
     myGroupRange: me.groupRange,
     candidateGroupRange: candGroupRange,
   });
@@ -334,6 +345,11 @@ export async function getCandidates(
       );
       const centroid = { lat: sum.lat / memberPoints.length, lng: sum.lng / memberPoints.length };
       distanceKm = haversineDistance(myPoint, centroid);
+    }
+
+    // In-person distance filter for groups
+    if (myMode === 'IN_PERSON' && distanceKm !== null && distanceKm > myMaxDistance) {
+      continue;
     }
 
     // Dominant or owner role
