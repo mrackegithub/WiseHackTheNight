@@ -214,8 +214,8 @@ export async function cancelBooking(
 
   if (userId) {
     const isAuthorized =
-      booking.bookedById === userId ||
-      booking.group.members.some((m) => m.userId === userId);
+      booking.group.members.some((m) => m.userId === userId) ||
+      (booking.group.members.length === 0 && booking.bookedById === userId);
     if (!isAuthorized) {
       throw forbidden('Not authorized to cancel this booking', 'FORBIDDEN');
     }

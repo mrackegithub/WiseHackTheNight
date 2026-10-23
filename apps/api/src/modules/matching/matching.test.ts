@@ -361,6 +361,96 @@ describe('B6: Matching Candidates Deck', () => {
       expect(fullRes.json().code).toBe('GROUP_FULL');
     });
 
+    it('rejects swiping on a group you are already a member of with 409 ALREADY_MEMBER', async () => {
+      const group = await app.prisma.group.create({
+        data: {
+          name: `Already Member Group ${Date.now()}`,
+          subjectId: algoSubjectId,
+          maxSize: 4,
+          isOpen: true,
+          members: {
+            create: [{ userId: testUser2Id, role: 'PEER', isOwner: true }],
+          },
+        },
+      });
+
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/v1/matching/swipes',
+        headers: { authorization: `Bearer ${testUser2Token}` },
+        payload: {
+          targetKind: 'group',
+          targetId: group.id,
+          subjectId: algoSubjectId,
+          direction: 'LIKE',
+        },
+      });
+      expect(res.statusCode).toBe(409);
+      expect(res.json().code).toBe('ALREADY_MEMBER');
+    });
+
+    it('rejects swiping on a user who is already in a group with you for that subject with 409 ALREADY_MATCHED', async () => {
+      const stamp = Date.now();
+      const regX = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/register',
+        payload: {
+          email: `same_group_x_${stamp}@sgm.local`,
+          password: 'password123',
+          displayName: 'Same Group X',
+        },
+      });
+      const userXToken = regX.json().accessToken;
+      const userXId = app.jwt.decode<{ sub: string }>(userXToken)!.sub;
+
+      const regY = await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/register',
+        payload: {
+          email: `same_group_y_${stamp}@sgm.local`,
+          password: 'password123',
+          displayName: 'Same Group Y',
+        },
+      });
+      const userYId = app.jwt.decode<{ sub: string }>(regY.json().accessToken)!.sub;
+
+      await app.prisma.userSubject.createMany({
+        data: [
+          { userId: userXId, subjectId: algoSubjectId, role: 'PEER' },
+          { userId: userYId, subjectId: algoSubjectId, role: 'PEER' },
+        ],
+      });
+
+      await app.prisma.group.create({
+        data: {
+          name: `Shared Group ${stamp}`,
+          subjectId: algoSubjectId,
+          maxSize: 4,
+          isOpen: true,
+          members: {
+            create: [
+              { userId: userXId, role: 'PEER', isOwner: true },
+              { userId: userYId, role: 'PEER', isOwner: false },
+            ],
+          },
+        },
+      });
+
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/v1/matching/swipes',
+        headers: { authorization: `Bearer ${userXToken}` },
+        payload: {
+          targetKind: 'user',
+          targetId: userYId,
+          subjectId: algoSubjectId,
+          direction: 'LIKE',
+        },
+      });
+      expect(res.statusCode).toBe(409);
+      expect(res.json().code).toBe('ALREADY_MATCHED');
+    });
+
     it('lists matches with cursor pagination', async () => {
       const res = await app.inject({
         method: 'GET',

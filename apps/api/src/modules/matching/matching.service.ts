@@ -234,9 +234,13 @@ export async function getCandidates(
 
   // 3. User candidates
   if (kind === 'user') {
-    const myGroupIds = currentUser.memberships.map((m) => m.groupId);
     const sharedGroupMembers = await prisma.groupMember.findMany({
-      where: { groupId: { in: myGroupIds } },
+      where: {
+        group: {
+          subjectId,
+          members: { some: { userId: currentUserId } },
+        },
+      },
       select: { userId: true },
     });
     const excludedUserIds = new Set([
@@ -300,6 +304,7 @@ export async function getCandidates(
       subjectId,
       isOpen: true,
       id: { notIn: Array.from(excludedGroupIds) },
+      members: { none: { userId: currentUserId } },
     },
     include: {
       subject: true,
@@ -327,6 +332,11 @@ export async function getCandidates(
   const groupCandidates = [];
 
   for (const group of candidateGroups) {
+    // Hard filter: group must not already contain me
+    if (group.members.some((m) => m.userId === currentUserId)) {
+      continue;
+    }
+
     // Hard filter: group must not be full
     if (group.members.length >= group.maxSize) {
       continue;
@@ -475,6 +485,20 @@ export async function swipe(
       throw notFound('User not found', 'NOT_FOUND');
     }
 
+    const alreadyInSameGroup = await prisma.groupMember.findFirst({
+      where: {
+        userId: targetId,
+        group: {
+          subjectId,
+          members: { some: { userId: currentUserId } },
+        },
+      },
+      include: { group: true },
+    });
+    if (alreadyInSameGroup) {
+      throw conflict('You are already in a study group together for this subject', 'ALREADY_MATCHED');
+    }
+
     // scored before the transaction to keep it short
     const alreadyLiked = await prisma.swipe.findFirst({
       where: { swiperId: targetId, targetKind: 'user', targetId: currentUserId, subjectId, direction: 'LIKE' },
@@ -483,6 +507,20 @@ export async function swipe(
     const likesBack = !alreadyLiked && targetUser.isSeed && (await testAccountLikesBack(prisma, currentUserId, targetId, subjectId));
 
     return prisma.$transaction(async (tx) => {
+      const alreadyInSameGroupTx = await tx.groupMember.findFirst({
+        where: {
+          userId: targetId,
+          group: {
+            subjectId,
+            members: { some: { userId: currentUserId } },
+          },
+        },
+        include: { group: true },
+      });
+      if (alreadyInSameGroupTx) {
+        throw conflict('You are already in a study group together for this subject', 'ALREADY_MATCHED');
+      }
+
       // 1. Record current swipe
       const currentSwipe = await tx.swipe.upsert({
         where: {
@@ -666,29 +704,31 @@ export async function swipe(
     }
 
     const isMember = group.members.some((m) => m.userId === currentUserId);
-    if (!isMember) {
-      if (group.members.length >= group.maxSize) {
-        throw conflict('Group is full', 'GROUP_FULL');
-      }
-      if (!group.isOpen) {
-        throw conflict('This group is invite-only', 'GROUP_CLOSED');
-      }
-
-      const userSubj = await tx.userSubject.findUnique({
-        where: { userId_subjectId: { userId: currentUserId, subjectId } },
-      });
-      const role: RoleTag = userSubj?.role ?? 'PEER';
-
-      // isOpen stays the creator's choice; a full group drops out of decks through the member-count filter
-      await tx.groupMember.create({
-        data: {
-          groupId: group.id,
-          userId: currentUserId,
-          role,
-          isOwner: false,
-        },
-      });
+    if (isMember) {
+      throw conflict('You are already a member of this study group', 'ALREADY_MEMBER');
     }
+
+    if (group.members.length >= group.maxSize) {
+      throw conflict('Group is full', 'GROUP_FULL');
+    }
+    if (!group.isOpen) {
+      throw conflict('This group is invite-only', 'GROUP_CLOSED');
+    }
+
+    const userSubj = await tx.userSubject.findUnique({
+      where: { userId_subjectId: { userId: currentUserId, subjectId } },
+    });
+    const role: RoleTag = userSubj?.role ?? 'PEER';
+
+    // isOpen stays the creator's choice; a full group drops out of decks through the member-count filter
+    await tx.groupMember.create({
+      data: {
+        groupId: group.id,
+        userId: currentUserId,
+        role,
+        isOwner: false,
+      },
+    });
 
     await tx.swipe.upsert({
       where: {

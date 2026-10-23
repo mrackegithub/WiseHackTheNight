@@ -35,8 +35,9 @@ export function BusyTimeModal({ defaultDate, onClose }: Props) {
   const [values, setValues] = useState({ title: '', date: defaultDate.toISODate()!, start: '18:00', end: '19:30', repeatWeeks: 0 });
   const [category, setCategory] = useState<EventCategory>('OTHER');
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [formError, setFormError] = useState<string | null>(null);
 
-  const save = useMutation({
+  const mutation = useMutation({
     mutationFn: (body: Schemas['ManualEventInput']) => unwrap(api.POST('/me/schedule', { body })),
     meta: { silent: true },
     onSuccess: (created) => {
@@ -44,8 +45,17 @@ export function BusyTimeModal({ defaultDate, onClose }: Props) {
       toast.success(created.length > 1 ? `Added "${created[0].title}" for ${created.length} weeks.` : `Added "${created[0].title}".`);
       onClose();
     },
-    onError: (err) => setErrors(fieldErrors(err)),
+    onError: (err) => {
+      if (
+        (err instanceof ApiError && (err.status === 409 || err.code === 'EVENT_CONFLICT')) ||
+        (err && typeof err === 'object' && ('status' in err && (err as { status: number }).status === 409 || 'code' in err && (err as { code: string }).code === 'EVENT_CONFLICT'))
+      ) {
+        setFormError((err as { message?: string }).message || 'You already have an event scheduled during this time.');
+      }
+      setErrors(fieldErrors(err));
+    },
   });
+  const save = mutation;
 
   const startTime = DateTime.fromISO(`${values.date}T${values.start}`, { zone: ZONE });
   const endTime = DateTime.fromISO(`${values.date}T${values.end}`, { zone: ZONE });
@@ -72,18 +82,37 @@ export function BusyTimeModal({ defaultDate, onClose }: Props) {
     }
     setErrors(next);
     if (Object.keys(next).length) return;
-    save.mutate({ title: values.title.trim(), start: toApiTime(start), end: toApiTime(end), repeatWeeks: values.repeatWeeks, category });
+    setFormError(null);
+    mutation.mutate(
+      { title: values.title.trim(), start: toApiTime(start), end: toApiTime(end), repeatWeeks: values.repeatWeeks, category },
+      {
+        onError: (err) => {
+          if (
+            (err instanceof ApiError && (err.status === 409 || err.code === 'EVENT_CONFLICT')) ||
+            (err && typeof err === 'object' && ('status' in err && (err as { status: number }).status === 409 || 'code' in err && (err as { code: string }).code === 'EVENT_CONFLICT'))
+          ) {
+            setFormError((err as { message?: string }).message || 'You already have an event scheduled during this time.');
+          }
+        },
+      },
+    );
   }
 
-  const set = (field: keyof typeof values) => (e: { target: { value: string } }) =>
+  const set = (field: keyof typeof values) => (e: { target: { value: string } }) => {
+    setFormError(null);
     setValues({ ...values, [field]: field === 'repeatWeeks' ? Number(e.target.value) : e.target.value });
+  };
 
-  const serverError = save.error && !(save.error instanceof ApiError && save.error.code === 'VALIDATION_FAILED') ? messageForError(save.error) : null;
+  const serverError =
+    formError ??
+    (mutation.error && !(mutation.error instanceof ApiError && mutation.error.code === 'VALIDATION_FAILED')
+      ? messageForError(mutation.error)
+      : null);
 
   return (
     <Modal title="Add busy time" onClose={onClose} size="md" description="Block time that isn't in Neptun. You won't be matched or scheduled then.">
       <form onSubmit={submit} noValidate className="flex flex-col gap-4">
-        <FormError message={serverError} />
+        <FormError message={formError || serverError} />
         <TextField label="What is it?" placeholder="e.g. Part-time job, football training" value={values.title} onChange={set('title')} error={errors.title} data-autofocus />
         <fieldset>
           <legend className="text-sm font-medium text-slate-700">Type</legend>

@@ -11,7 +11,7 @@ import {
   type WeeklyWindow,
 } from '@sgm/integrations';
 import type { paths } from '@sgm/contracts';
-import { notFound } from '../../../core/errors.js';
+import { conflict, notFound } from '../../../core/errors.js';
 import { cancelStudySession } from '../../sessions/sessions.service.js';
 import type { ManualEventInput, WeeklyWindowInput } from './neptun.schemas.js';
 
@@ -197,6 +197,25 @@ export async function createManualEvents(
 ): Promise<CalendarEventResponse[]> {
   const start = DateTime.fromISO(input.start).setZone('Europe/Budapest');
   const end = DateTime.fromISO(input.end).setZone('Europe/Budapest');
+
+  for (let week = 0; week <= input.repeatWeeks; week++) {
+    const weekStart = start.plus({ weeks: week }).toJSDate();
+    const weekEnd = end.plus({ weeks: week }).toJSDate();
+    const conflictEvent = await prisma.calendarEvent.findFirst({
+      where: {
+        userId,
+        start: { lt: weekEnd },
+        end: { gt: weekStart },
+      },
+    });
+    if (conflictEvent) {
+      throw conflict(
+        'You already have a class or busy block scheduled during this time: ' + conflictEvent.title,
+        'EVENT_CONFLICT',
+      );
+    }
+  }
+
   const created = await prisma.$transaction(
     Array.from({ length: input.repeatWeeks + 1 }, (_, week) =>
       prisma.calendarEvent.create({

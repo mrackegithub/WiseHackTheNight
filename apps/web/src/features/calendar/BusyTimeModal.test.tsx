@@ -144,4 +144,43 @@ describe('BusyTimeModal', () => {
     expect(await screen.findByText('Give it a short name, e.g. "Part-time job".')).toBeInTheDocument();
     expect(postSpy).not.toHaveBeenCalled();
   });
+
+  it('displays conflict error message and keeps modal open when overlapping event exists', async () => {
+    const user = userEvent.setup();
+    const conflictMessage = 'You already have a class or busy block scheduled during this time: Algorithms Lecture';
+    vi.spyOn(api, 'POST').mockResolvedValueOnce({
+      response: new Response(null, { status: 409 }),
+      error: { code: 'EVENT_CONFLICT', message: conflictMessage },
+    } as any);
+
+    const { onClose } = renderModal();
+
+    const titleInput = screen.getByLabelText('What is it?');
+    await user.type(titleInput, 'Gym');
+
+    await user.click(screen.getByRole('button', { name: 'Add busy time' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(conflictMessage);
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('displays fallback error message on 409 conflict when message is omitted', async () => {
+    const user = userEvent.setup();
+    vi.spyOn(api, 'POST').mockResolvedValueOnce({
+      response: new Response(null, { status: 409 }),
+      error: { code: 'EVENT_CONFLICT', message: '' },
+    } as any);
+
+    const { onClose } = renderModal();
+
+    const titleInput = screen.getByLabelText('What is it?');
+    await user.type(titleInput, 'Study');
+
+    await user.click(screen.getByRole('button', { name: 'Add busy time' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'You already have an event scheduled during this time.',
+    );
+    expect(onClose).not.toHaveBeenCalled();
+  });
 });

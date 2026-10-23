@@ -260,6 +260,40 @@ export async function joinGroup(
       },
     });
 
+    // Sync all upcoming planned sessions into the joining member's calendar
+    const now = new Date();
+    const futureSessions = await tx.studySession.findMany({
+      where: {
+        groupId,
+        status: 'PLANNED',
+        start: { gte: now },
+      },
+    });
+    for (const session of futureSessions) {
+      await tx.calendarEvent.upsert({
+        where: {
+          userId_source_externalUid: {
+            userId,
+            source: 'STUDY_SESSION',
+            externalUid: session.id,
+          },
+        },
+        update: {
+          start: session.start,
+          end: session.end,
+          title: `Study Session: ${group.name}`,
+        },
+        create: {
+          userId,
+          source: 'STUDY_SESSION',
+          externalUid: session.id,
+          title: `Study Session: ${group.name}`,
+          start: session.start,
+          end: session.end,
+        },
+      });
+    }
+
     // isOpen is the creator's choice (listed vs invite-only), not fullness: member count is checked on every join
     const newMemberCount = group.members.length + 1;
 
@@ -431,6 +465,40 @@ export async function acceptInvite(prisma: PrismaClient, userId: string, token: 
       await tx.groupMember.create({
         data: { groupId: group.id, userId, role: userSubj?.role ?? 'PEER', isOwner: false },
       });
+
+      // Sync all upcoming planned sessions into the joining member's calendar
+      const now = new Date();
+      const futureSessions = await tx.studySession.findMany({
+        where: {
+          groupId,
+          status: 'PLANNED',
+          start: { gte: now },
+        },
+      });
+      for (const session of futureSessions) {
+        await tx.calendarEvent.upsert({
+          where: {
+            userId_source_externalUid: {
+              userId,
+              source: 'STUDY_SESSION',
+              externalUid: session.id,
+            },
+          },
+          update: {
+            start: session.start,
+            end: session.end,
+            title: `Study Session: ${group.name}`,
+          },
+          create: {
+            userId,
+            source: 'STUDY_SESSION',
+            externalUid: session.id,
+            title: `Study Session: ${group.name}`,
+            start: session.start,
+            end: session.end,
+          },
+        });
+      }
     }
   });
 
